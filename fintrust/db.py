@@ -4,36 +4,24 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extensions import connection
 
+from fintrust.config import get_config
+
 
 def get_database_connection() -> connection:
-    """
-    Create and return a PostgreSQL database connection.
-
-    Configuration is read from environment variables so credentials
-    are not hardcoded into the application.
-    """
     return psycopg2.connect(
-        host=os.environ["DB_HOST"],
-        port=int(os.getenv("DB_PORT", "5432")),
-        database=os.environ["DB_NAME"],
-        user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
+        host=get_config("DB_HOST"),
+        port=int(get_config("DB_PORT", "5432")),
+        database=get_config("DB_NAME"),
+        user=get_config("DB_USER"),
+        password=get_config("DB_PASSWORD", decrypt=True),
         connect_timeout=10,
-        sslmode=os.getenv("DB_SSLMODE", "require"),
+        sslmode=get_config("DB_SSLMODE", "require"),
     )
 
 
 @contextmanager
 def get_db_connection():
-    """
-    Provide a database connection with automatic commit/rollback handling.
-
-    Commits when the operation completes successfully.
-    Rolls back when an exception occurs.
-    Always closes the connection afterwards.
-    """
     conn = get_database_connection()
-
     try:
         yield conn
         conn.commit()
@@ -42,3 +30,48 @@ def get_db_connection():
         raise
     finally:
         conn.close()
+
+
+def insert_transaction(
+    conn: connection,
+    transaction: dict,
+    risk_flag: str,
+) -> None:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id,
+                account_id,
+                tx_date,
+                amount,
+                currency,
+                transaction_type,
+                source_country,
+                destination_country,
+                risk_flag
+            )
+            VALUES (
+                %(transaction_id)s,
+                %(account_id)s,
+                %(tx_date)s,
+                %(amount)s,
+                %(currency)s,
+                %(transaction_type)s,
+                %(source_country)s,
+                %(destination_country)s,
+                %(risk_flag)s
+            )
+            """,
+            {
+                "transaction_id": transaction["transaction_id"],
+                "account_id": transaction["account_id"],
+                "tx_date": transaction["tx_date"],
+                "amount": transaction["amount"],
+                "currency": transaction["currency"],
+                "transaction_type": transaction["transaction_type"],
+                "source_country": transaction["source_country"],
+                "destination_country": transaction["destination_country"],
+                "risk_flag": risk_flag,
+            },
+        )
