@@ -1,0 +1,54 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "ReadRiskEvents",
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Query"
+            ],
+            "Resource": "arn:aws:dynamodb:eu-north-1:*:table/fintrust-prod-risk-events"
+        },
+        {
+            "Sid": "ReadTransactionUploads",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject"
+            ],
+            "Resource": "arn:aws:s3:::fintrust-prod-raw-transactions/*"
+        },
+        {
+            "Sid": "WriteTransactionUploads",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject"
+            ],
+            "Resource": "arn:aws:s3:::fintrust-prod-raw-transactions/*"
+        },
+        {
+            "Sid": "ReadFinTrustParameters",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameter"
+            ],
+            "Resource": "arn:aws:ssm:eu-north-1:*:parameter/fintrust/prod/*"
+        },
+        {
+            "Sid": "InvokeIngestLambda",
+            "Effect": "Allow",
+            "Action": [
+                "lambda:InvokeFunction"
+            ],
+            "Resource": "arn:aws:lambda:eu-north-1:051084216179:function:fintrust-prod-ingest"
+        },
+        {
+            "Sid": "InvokeAlertLambda",
+            "Effect": "Allow",
+            "Action": [
+                "lambda:InvokeFunction"
+            ],
+            "Resource": "arn:aws:lambda:eu-north-1:051084216179:function:fintrust-prod-alert"
+        }
+    ]
+}
