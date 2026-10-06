@@ -17,12 +17,87 @@ logger.setLevel(logging.INFO)
 
 _s3 = boto3.client("s3")
 _sqs = boto3.client("sqs")
+_cloudwatch = boto3.client("cloudwatch")
 
 QUARANTINE_BUCKET = "fintrust-prod-quarantine-transactions"
 TRANSACTION_QUEUE_URL = (
     "https://sqs.eu-north-1.amazonaws.com/051084216179/"
     "fintrust-prod-transaction-queue.fifo"
 )
+METRIC_NAMESPACE = "FinTrust/ETL"
+
+
+def publish_metrics(
+    processed_transactions: int,
+    ingestion_errors: int,
+    high_risk_transactions: int,
+) -> None:
+    """Publish aggregated ETL metrics to CloudWatch."""
+
+    try:
+        _cloudwatch.put_metric_data(
+            Namespace=METRIC_NAMESPACE,
+            MetricData=[
+                {
+                    "MetricName": "ProcessedTransactions",
+                    "Dimensions": [
+                        {
+                            "Name": "Environment",
+                            "Value": "prod",
+                        }
+                    ],
+                    "Value": processed_transactions,
+                    "Unit": "Count",
+                },
+                {
+                    "MetricName": "IngestionErrors",
+                    "Dimensions": [
+                        {
+                            "Name": "Environment",
+                            "Value": "prod",
+                        }
+                    ],
+                    "Value": ingestion_errors,
+                    "Unit": "Count",
+                },
+                {
+                    "MetricName": "HighRiskTransactions",
+                    "Dimensions": [
+                        {
+                            "Name": "Environment",
+                            "Value": "prod",
+                        }
+                    ],
+                    "Value": high_risk_transactions,
+                    "Unit": "Count",
+                },
+            ],
+        )
+
+        logger.info(
+            json.dumps(
+                {
+                    "event": "cloudwatch_metrics_published",
+                    "namespace": METRIC_NAMESPACE,
+                    "processed_transactions": processed_transactions,
+                    "ingestion_errors": ingestion_errors,
+                    "high_risk_transactions": high_risk_transactions,
+                },
+                default=str,
+            )
+        )
+
+    except Exception as exc:
+        logger.error(
+            json.dumps(
+                {
+                    "event": "cloudwatch_metrics_failed",
+                    "namespace": METRIC_NAMESPACE,
+                    "error": str(exc),
+                },
+                default=str,
+            )
+        )
 
 
 def calculate_risk_pre_score(
@@ -238,6 +313,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     total_rows = 0
     valid_rows = 0
     invalid_rows = 0
+    high_risk_rows = 0
 
     logger.info(
         json.dumps(
@@ -271,6 +347,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 valid_rows += 1
 
                 risk_level, risk_reasons = calculate_risk_pre_score(row)
+
+                if risk_level == "HIGH":
+                    high_risk_rows += 1
 
                 logger.info(
                     json.dumps(
@@ -316,6 +395,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 default=str,
             )
         )
+
+    publish_metrics(
+        processed_transactions=valid_rows,
+        ingestion_errors=invalid_rows,
+        high_risk_transactions=high_risk_rows,
+    )
 
     return {
         "statusCode": 200,
