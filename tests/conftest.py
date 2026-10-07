@@ -1,7 +1,9 @@
 import boto3
 import pytest
 from moto import mock_aws
+
 from fintrust import alert
+from fintrust import dynamo
 from fintrust import ingest
 
 
@@ -24,6 +26,7 @@ def aws_resources():
         )
 
         # Replace module-level AWS clients with Moto clients.
+        ingest._s3 = s3
         ingest._cloudwatch = cloudwatch
         ingest._sqs = sqs
         alert._ses = ses
@@ -65,6 +68,9 @@ def aws_resources():
             ],
             BillingMode="PAY_PER_REQUEST",
         )
+
+        # Replace the production DynamoDB table with the Moto table.
+        dynamo.table = table
 
         queue = sqs.create_queue(
             QueueName=sqs_queue_name,
