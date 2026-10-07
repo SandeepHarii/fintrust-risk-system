@@ -1,8 +1,19 @@
 -- FinTrust Transaction Insights and Risk Monitoring System
 -- PostgreSQL Core Transaction Ledger
 -- Schema: 3NF
+-- Data Model: Customer -> Account -> Transaction
 
 BEGIN;
+
+-- ============================================================
+-- CUSTOMERS
+-- ============================================================
+
+CREATE TABLE customers (
+    customer_id UUID PRIMARY KEY,
+    customer_name VARCHAR(150) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- ACCOUNTS
@@ -10,10 +21,15 @@ BEGIN;
 
 CREATE TABLE accounts (
     account_id UUID PRIMARY KEY,
+    customer_id UUID NOT NULL,
     account_number VARCHAR(20) NOT NULL UNIQUE,
-    account_holder_name VARCHAR(150) NOT NULL,
     account_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_accounts_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customers(customer_id)
+        ON DELETE RESTRICT,
 
     CONSTRAINT chk_accounts_status
         CHECK (account_status IN ('ACTIVE', 'SUSPENDED', 'CLOSED'))
@@ -144,6 +160,9 @@ CREATE TABLE alerts (
 -- ============================================================
 -- INDEXES
 -- ============================================================
+
+CREATE INDEX idx_accounts_customer_id
+    ON accounts(customer_id);
 
 CREATE INDEX idx_transactions_account_id
     ON transactions(account_id);
