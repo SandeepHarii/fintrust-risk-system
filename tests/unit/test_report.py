@@ -1,5 +1,5 @@
-from moto import mock_aws
 import boto3
+from moto import mock_aws
 
 from fintrust import report
 
@@ -8,10 +8,16 @@ from fintrust import report
 def test_upload_report_to_s3():
     s3 = boto3.client("s3", region_name="eu-north-1")
 
+    # Replace the module-level S3 client with the Moto client.
+    report.s3 = s3
+
     bucket_name = "fintrust-test-reports"
+
     s3.create_bucket(
         Bucket=bucket_name,
-        CreateBucketConfiguration={"LocationConstraint": "eu-north-1"},
+        CreateBucketConfiguration={
+            "LocationConstraint": "eu-north-1",
+        },
     )
 
     report.REPORT_BUCKET = bucket_name
