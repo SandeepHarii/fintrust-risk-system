@@ -1,6 +1,14 @@
+import os
+
 import pytest
 
 from fintrust.db import get_db_connection
+
+
+pytestmark = pytest.mark.skipif(
+    not os.getenv("DB_HOST"),
+    reason="Database integration configuration is not available",
+)
 
 
 def test_database_connection():
