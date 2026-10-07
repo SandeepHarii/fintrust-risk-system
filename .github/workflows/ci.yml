@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  AWS_DEFAULT_REGION: eu-north-1
+
 jobs:
   unit-tests:
     name: Unit Tests
