@@ -4,8 +4,11 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import unquote_plus
 
 import boto3
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from fintrust.db import get_db_connection, insert_transaction
 from fintrust.dynamo import put_risk_event
@@ -15,15 +18,19 @@ from fintrust.validators import validate_transaction
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Initialise AWS clients at module level for Lambda connection reuse.
 _s3 = boto3.client("s3")
 _sqs = boto3.client("sqs")
 _cloudwatch = boto3.client("cloudwatch")
 
 QUARANTINE_BUCKET = "fintrust-prod-quarantine-transactions"
+PROCESSED_BUCKET = "fintrust-prod-processed-transactions"
+
 TRANSACTION_QUEUE_URL = (
     "https://sqs.eu-north-1.amazonaws.com/051084216179/"
     "fintrust-prod-transaction-queue.fifo"
 )
+
 METRIC_NAMESPACE = "FinTrust/ETL"
 
 
@@ -33,7 +40,6 @@ def publish_metrics(
     high_risk_transactions: int,
 ) -> None:
     """Publish aggregated ETL metrics to CloudWatch."""
-
     try:
         _cloudwatch.put_metric_data(
             Namespace=METRIC_NAMESPACE,
@@ -86,7 +92,6 @@ def publish_metrics(
                 default=str,
             )
         )
-
     except Exception as exc:
         logger.error(
             json.dumps(
@@ -104,19 +109,23 @@ def calculate_risk_pre_score(
     transaction: dict[str, Any],
 ) -> tuple[str, list[str]]:
     """Calculate the initial risk level from transaction-level rules."""
-
     reasons: list[str] = []
 
     try:
         amount = float(transaction["amount"])
-    except (TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return "HIGH", ["INVALID_AMOUNT"]
 
     if amount > 50000:
         reasons.append("HIGH_AMOUNT")
 
-    source_country = str(transaction["source_country"]).strip().upper()
-    destination_country = str(transaction["destination_country"]).strip().upper()
+    source_country = str(
+        transaction["source_country"]
+    ).strip().upper()
+
+    destination_country = str(
+        transaction["destination_country"]
+    ).strip().upper()
 
     if source_country != destination_country:
         reasons.append("CROSS_BORDER")
@@ -135,8 +144,10 @@ def quarantine_row(
     source_key: str,
 ) -> None:
     """Store an invalid transaction row in the quarantine S3 bucket."""
-
-    transaction_id = row.get("transaction_id", f"row-{row_number}")
+    transaction_id = row.get(
+        "transaction_id",
+        f"row-{row_number}",
+    )
 
     quarantine_record = {
         "quarantined_at": datetime.now(timezone.utc).isoformat(),
@@ -182,7 +193,6 @@ def send_transaction_to_queue(
     risk_reasons: list[str],
 ) -> None:
     """Send a valid transaction to the FinTrust FIFO transaction queue."""
-
     account_id = str(transaction["account_id"])
     transaction_id = str(transaction["transaction_id"])
 
@@ -223,7 +233,6 @@ def store_transaction_in_rds(
     risk_level: str,
 ) -> None:
     """Insert a validated transaction into PostgreSQL."""
-
     with get_db_connection() as conn:
         insert_transaction(
             conn=conn,
@@ -250,7 +259,6 @@ def store_risk_event_in_dynamodb(
     risk_reasons: list[str],
 ) -> None:
     """Store the transaction risk event in DynamoDB."""
-
     account_id = str(transaction["account_id"])
     transaction_timestamp = str(transaction["tx_date"])
     transaction_id = str(transaction["transaction_id"])
@@ -258,7 +266,9 @@ def store_risk_event_in_dynamodb(
     risk_event = {
         "transaction_id": transaction_id,
         "risk_level": risk_level,
-        "risk_reason": ",".join(risk_reasons) if risk_reasons else "NONE",
+        "risk_reason": (
+            ",".join(risk_reasons) if risk_reasons else "NONE"
+        ),
     }
 
     put_risk_event(
@@ -288,7 +298,6 @@ def process_valid_transaction(
     risk_reasons: list[str],
 ) -> None:
     """Persist and queue a validated transaction."""
-
     store_transaction_in_rds(
         transaction=transaction,
         risk_level=risk_level,
@@ -307,9 +316,69 @@ def process_valid_transaction(
     )
 
 
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Process a FinTrust transaction CSV uploaded to S3."""
+def store_processed_parquet(
+    transactions: list[dict[str, Any]],
+    source_key: str,
+) -> str | None:
+    """Store successfully processed transactions as a Parquet object in S3."""
+    if not transactions:
+        logger.info(
+            json.dumps(
+                {
+                    "event": "no_valid_transactions_to_export",
+                    "source_key": source_key,
+                }
+            )
+        )
+        return None
 
+    table = pa.Table.from_pylist(transactions)
+
+    buffer = io.BytesIO()
+    pq.write_table(
+        table,
+        buffer,
+        compression="snappy",
+    )
+    buffer.seek(0)
+
+    source_filename = source_key.rsplit("/", 1)[-1]
+    source_stem = source_filename.rsplit(".", 1)[0]
+    timestamp = datetime.now(timezone.utc).strftime(
+        "%Y%m%dT%H%M%S%fZ"
+    )
+
+    processed_key = (
+        f"processed/{source_stem}-{timestamp}.parquet"
+    )
+
+    _s3.put_object(
+        Bucket=PROCESSED_BUCKET,
+        Key=processed_key,
+        Body=buffer.getvalue(),
+        ContentType="application/vnd.apache.parquet",
+    )
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "processed_parquet_uploaded",
+                "source_key": source_key,
+                "processed_bucket": PROCESSED_BUCKET,
+                "processed_key": processed_key,
+                "transaction_count": len(transactions),
+            }
+        )
+    )
+
+    return processed_key
+
+
+def lambda_handler(
+    event: dict[str, Any],
+    context: Any,
+) -> dict[str, Any]:
+    """Process a FinTrust transaction CSV uploaded to S3."""
     total_rows = 0
     valid_rows = 0
     invalid_rows = 0
@@ -320,15 +389,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             {
                 "event": "ingest_lambda_invoked",
                 "record_count": len(event.get("Records", [])),
-                "request_id": getattr(context, "aws_request_id", None),
-            },
-            default=str,
+                "request_id": getattr(
+                    context,
+                    "aws_request_id",
+                    None,
+                ),
+            }
         )
     )
 
     for record in event.get("Records", []):
         bucket = record["s3"]["bucket"]["name"]
-        object_key = record["s3"]["object"]["key"]
+        object_key = unquote_plus(
+            record["s3"]["object"]["key"]
+        )
 
         response = _s3.get_object(
             Bucket=bucket,
@@ -338,41 +412,64 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         csv_content = response["Body"].read().decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(csv_content))
 
+        # Each source CSV gets its own processed Parquet object.
+        processed_transactions: list[dict[str, Any]] = []
+        file_total_rows = 0
+        file_valid_rows = 0
+        file_invalid_rows = 0
+
         for row_number, row in enumerate(reader, start=2):
             total_rows += 1
+            file_total_rows += 1
 
             is_valid, errors = validate_transaction(row)
 
             if is_valid:
-                valid_rows += 1
-
-                risk_level, risk_reasons = calculate_risk_pre_score(row)
-
-                if risk_level == "HIGH":
-                    high_risk_rows += 1
+                risk_level, risk_reasons = calculate_risk_pre_score(
+                    row
+                )
 
                 logger.info(
                     json.dumps(
                         {
                             "event": "transaction_pre_scored",
                             "row_number": row_number,
-                            "transaction_id": row.get("transaction_id"),
+                            "transaction_id": row.get(
+                                "transaction_id"
+                            ),
                             "account_id": row.get("account_id"),
                             "risk_level": risk_level,
                             "risk_reasons": risk_reasons,
-                        },
-                        default=str,
+                        }
                     )
                 )
 
+                # Only collect the record after all existing persistence
+                # and queue operations have succeeded.
                 process_valid_transaction(
                     transaction=row,
                     risk_level=risk_level,
                     risk_reasons=risk_reasons,
                 )
 
+                processed_record = dict(row)
+                processed_record["risk_level"] = risk_level
+                processed_record["risk_reasons"] = risk_reasons
+                processed_record["processed_at"] = (
+                    datetime.now(timezone.utc).isoformat()
+                )
+
+                processed_transactions.append(processed_record)
+
+                valid_rows += 1
+                file_valid_rows += 1
+
+                if risk_level == "HIGH":
+                    high_risk_rows += 1
+
             else:
                 invalid_rows += 1
+                file_invalid_rows += 1
 
                 quarantine_row(
                     row=row,
@@ -382,17 +479,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     source_key=object_key,
                 )
 
+        processed_key = store_processed_parquet(
+            transactions=processed_transactions,
+            source_key=object_key,
+        )
+
         logger.info(
             json.dumps(
                 {
                     "event": "csv_processed",
                     "bucket": bucket,
                     "object_key": object_key,
-                    "total_rows": total_rows,
-                    "valid_rows": valid_rows,
-                    "invalid_rows": invalid_rows,
-                },
-                default=str,
+                    "total_rows": file_total_rows,
+                    "valid_rows": file_valid_rows,
+                    "invalid_rows": file_invalid_rows,
+                    "processed_bucket": (
+                        PROCESSED_BUCKET if processed_key else None
+                    ),
+                    "processed_key": processed_key,
+                }
             )
         )
 

@@ -1,5 +1,11 @@
-from fintrust.ingest import calculate_risk_pre_score 
+import io
+import json
+
+import pyarrow.parquet as pq
+
 from fintrust import ingest
+from fintrust.ingest import calculate_risk_pre_score
+
 
 def base_transaction():
     return {
@@ -68,8 +74,6 @@ def test_country_comparison_is_case_insensitive():
     assert risk_level == "LOW"
     assert reasons == []
 
-    from fintrust import ingest
-
 
 def test_publish_metrics(aws_resources):
     ingest.publish_metrics(
@@ -90,6 +94,7 @@ def test_publish_metrics(aws_resources):
     assert "ProcessedTransactions" in metric_names
     assert "IngestionErrors" in metric_names
     assert "HighRiskTransactions" in metric_names
+
 
 def test_send_transaction_to_queue(aws_resources):
     transaction = {
@@ -112,3 +117,67 @@ def test_send_transaction_to_queue(aws_resources):
 
     assert "Messages" in response
     assert len(response["Messages"]) == 1
+
+
+def test_store_processed_parquet_round_trip(monkeypatch):
+    transaction = {
+        "transaction_id": "550e8400-e29b-41d4-a716-446655440000",
+        "account_id": "6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+        "amount": "60000",
+        "currency": "ZAR",
+        "risk_level": "HIGH",
+        "risk_reasons": ["HIGH_AMOUNT"],
+        "processed_at": "2026-10-10T12:00:00+00:00",
+    }
+
+    uploaded_objects = []
+
+    def fake_put_object(**kwargs):
+        uploaded_objects.append(kwargs)
+        return {}
+
+    monkeypatch.setattr(ingest._s3, "put_object", fake_put_object)
+
+    processed_key = ingest.store_processed_parquet(
+        transactions=[transaction],
+        source_key="uploads/test-transactions.csv",
+    )
+
+    assert processed_key is not None
+    assert processed_key.startswith("processed/test-transactions-")
+    assert processed_key.endswith(".parquet")
+    assert len(uploaded_objects) == 1
+
+    uploaded = uploaded_objects[0]
+
+    assert uploaded["Bucket"] == ingest.PROCESSED_BUCKET
+    assert uploaded["Key"] == processed_key
+    assert uploaded["ContentType"] == "application/vnd.apache.parquet"
+
+    parquet_table = pq.read_table(
+        io.BytesIO(uploaded["Body"])
+    )
+    records = parquet_table.to_pylist()
+
+    assert len(records) == 1
+    assert records[0]["transaction_id"] == transaction["transaction_id"]
+    assert records[0]["account_id"] == transaction["account_id"]
+    assert records[0]["amount"] == "60000"
+    assert records[0]["risk_level"] == "HIGH"
+    assert records[0]["risk_reasons"] == ["HIGH_AMOUNT"]
+
+
+def test_store_processed_parquet_empty_input(monkeypatch):
+    def fail_if_called(**kwargs):
+        raise AssertionError(
+            "S3 upload should not occur when there are no transactions"
+        )
+
+    monkeypatch.setattr(ingest._s3, "put_object", fail_if_called)
+
+    result = ingest.store_processed_parquet(
+        transactions=[],
+        source_key="uploads/empty.csv",
+    )
+
+    assert result is None
