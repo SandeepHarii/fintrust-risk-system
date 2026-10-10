@@ -1,7 +1,5 @@
 # ------------------------------------------------------------
-
 # Python Virtual Environments
-
 # ------------------------------------------------------------
 
 venv/
@@ -9,19 +7,15 @@ venv/
 env/
 
 # ------------------------------------------------------------
-
 # Python Bytecode & Cache
-
 # ------------------------------------------------------------
 
-**pycache**/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
 # ------------------------------------------------------------
-
 # Build / Distribution
-
 # ------------------------------------------------------------
 
 build/
@@ -29,18 +23,14 @@ dist/
 *.egg-info/
 
 # ------------------------------------------------------------
-
 # IDE Settings
-
 # ------------------------------------------------------------
 
 .vscode/settings.json
 .idea/
 
 # ------------------------------------------------------------
-
 # Environment Variables & Secrets
-
 # ------------------------------------------------------------
 
 .env
@@ -48,9 +38,7 @@ dist/
 secrets.py
 
 # ------------------------------------------------------------
-
 # SQLite Databases
-
 # ------------------------------------------------------------
 
 *.db
@@ -58,9 +46,7 @@ secrets.py
 *.sqlite3
 
 # ------------------------------------------------------------
-
 # Generated Output
-
 # ------------------------------------------------------------
 
 logs/
@@ -68,9 +54,15 @@ output/
 transactions_enriched.csv
 
 # ------------------------------------------------------------
+# Frontend Dependencies & Local Configuration
+# ------------------------------------------------------------
 
+frontend/node_modules/
+frontend/.env.local
+frontend/.env.*.local
+
+# ------------------------------------------------------------
 # Temporary Capstone Test / Deployment Artifacts
-
 # ------------------------------------------------------------
 
 d2-*.csv
@@ -79,10 +71,22 @@ d4-*.csv
 ingest-*.zip
 ingest-*-check/
 
+# Lambda deployment packages and build directories
+fintrust-prod-ingest.zip
+fintrust-prod-score.zip
+ingest-build/
+score-build/
+
+# Temporary test requests and responses
+ingest-smoke-response.json
+ingest-smoke-test.json
+score-test-event.json
+score-test-response.json
+upload-cors-integration-responses.json
+upload-cors-request-templates.json
+
 # ------------------------------------------------------------
-
 # Operating System Files
-
 # ------------------------------------------------------------
 
 .DS_Store

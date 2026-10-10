@@ -39,7 +39,7 @@ def calculate_risk_score(
 
     try:
         amount = float(transaction["amount"])
-    except (TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return 0, "LOW", ["INVALID_AMOUNT"]
 
     if amount > 50000:
@@ -62,13 +62,33 @@ def calculate_risk_score(
         str(transaction["tx_date"]).replace("Z", "+00:00")
     )
 
+    # Normalise timestamps so comparisons work with both
+    # timezone-aware and timezone-naive database/test values.
+    if transaction_time.tzinfo is None:
+        transaction_time = transaction_time.replace(
+            tzinfo=timezone.utc
+        )
+
     window_start = transaction_time - timedelta(hours=1)
     velocity_count = 0
 
     for account_transaction in account_transactions:
-        other_time = datetime.fromisoformat(
-            str(account_transaction["tx_date"]).replace("Z", "+00:00")
-        )
+        try:
+            other_time = datetime.fromisoformat(
+                str(account_transaction["tx_date"]).replace(
+                    "Z", "+00:00"
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            logger.warning(
+                "Skipping transaction with an invalid timestamp"
+            )
+            continue
+
+        if other_time.tzinfo is None:
+            other_time = other_time.replace(
+                tzinfo=timezone.utc
+            )
 
         if window_start <= other_time <= transaction_time:
             velocity_count += 1
@@ -77,7 +97,13 @@ def calculate_risk_score(
         score += HIGH_VELOCITY_POINTS
         reasons.append("HIGH_VELOCITY")
 
-    if score >= HIGH_THRESHOLD:
+    # Mandatory high-risk rules take priority over the
+    # weighted score thresholds.
+    if (
+        "HIGH_AMOUNT" in reasons
+        or "HIGH_VELOCITY" in reasons
+        or score >= HIGH_THRESHOLD
+    ):
         risk_level = "HIGH"
     elif score >= MEDIUM_THRESHOLD:
         risk_level = "MEDIUM"
@@ -165,13 +191,7 @@ def insert_postgres_risk_event(
                 reason,
                 risk_level
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-            )
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (
                 risk_event_id,
@@ -203,13 +223,7 @@ def create_alert(
                 risk_event_id,
                 alert_status
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                'PENDING'
-            )
+            VALUES (%s, %s, %s, %s, 'PENDING')
             """,
             (
                 alert_id,
@@ -303,7 +317,8 @@ def invoke_alert_lambda(
 
             if alert_response.get("statusCode", 200) >= 400:
                 raise RuntimeError(
-                    f"Alert Lambda returned an error: {alert_response}"
+                    f"Alert Lambda returned an error: "
+                    f"{alert_response}"
                 )
 
     logger.info(

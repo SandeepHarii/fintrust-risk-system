@@ -4,6 +4,7 @@ import uuid
 
 import boto3
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,20 @@ logger.setLevel(logging.INFO)
 app = FastAPI(
     title="FinTrust Transaction Insights and Risk Monitoring API",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "X-Api-Key",
+        "X-Amz-Date",
+        "Authorization",
+        "X-Amz-Security-Token",
+    ],
 )
 
 

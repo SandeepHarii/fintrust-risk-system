@@ -25,7 +25,7 @@ def test_low_risk_transaction():
     assert reasons == []
 
 
-def test_high_amount_scores_medium():
+def test_high_amount_scores_high():
     transaction = base_transaction()
     transaction["amount"] = "50001"
 
@@ -35,7 +35,7 @@ def test_high_amount_scores_medium():
     )
 
     assert score == 30
-    assert risk_level == "MEDIUM"
+    assert risk_level == "HIGH"
     assert reasons == ["HIGH_AMOUNT"]
 
 
@@ -53,42 +53,35 @@ def test_cross_border_scores_low():
     assert reasons == ["CROSS_BORDER"]
 
 
-def test_high_velocity_scores_medium():
+def test_high_velocity_scores_high():
     transaction = base_transaction()
-
     transactions = []
 
     for index in range(11):
         transactions.append(
             {
                 **transaction,
-                "transaction_id": f"550e8400-e29b-41d4-a716-4466554400{index:02d}",
-                "tx_date": (
-                    datetime(
-                        2026,
-                        10,
-                        1,
-                        10,
-                        index,
-                        tzinfo=timezone.utc,
-                    ).isoformat()
+                "transaction_id": (
+                    f"550e8400-e29b-41d4-a716-4466554400{index:02d}"
                 ),
+                "tx_date": datetime(
+                    2026, 10, 1, 10, index, tzinfo=timezone.utc
+                ).isoformat(),
             }
         )
 
     current_transaction = transactions[-1]
-
     score, risk_level, reasons = calculate_risk_score(
         current_transaction,
         transactions,
     )
 
     assert score == 40
-    assert risk_level == "MEDIUM"
+    assert risk_level == "HIGH"
     assert reasons == ["HIGH_VELOCITY"]
 
 
-def test_high_amount_and_cross_border_is_medium():
+def test_high_amount_and_cross_border_is_high():
     transaction = base_transaction()
     transaction["amount"] = "75000"
     transaction["destination_country"] = "GB"
@@ -99,7 +92,7 @@ def test_high_amount_and_cross_border_is_medium():
     )
 
     assert score == 50
-    assert risk_level == "MEDIUM"
+    assert risk_level == "HIGH"
     assert "HIGH_AMOUNT" in reasons
     assert "CROSS_BORDER" in reasons
 
@@ -107,29 +100,22 @@ def test_high_amount_and_cross_border_is_medium():
 def test_high_amount_and_velocity_is_high():
     transaction = base_transaction()
     transaction["amount"] = "75000"
-
     transactions = []
 
     for index in range(11):
         transactions.append(
             {
                 **transaction,
-                "transaction_id": f"650e8400-e29b-41d4-a716-4466554400{index:02d}",
-                "tx_date": (
-                    datetime(
-                        2026,
-                        10,
-                        1,
-                        10,
-                        index,
-                        tzinfo=timezone.utc,
-                    ).isoformat()
+                "transaction_id": (
+                    f"650e8400-e29b-41d4-a716-4466554400{index:02d}"
                 ),
+                "tx_date": datetime(
+                    2026, 10, 1, 10, index, tzinfo=timezone.utc
+                ).isoformat(),
             }
         )
 
     current_transaction = transactions[-1]
-
     score, risk_level, reasons = calculate_risk_score(
         current_transaction,
         transactions,
@@ -145,29 +131,22 @@ def test_all_three_rules_score_high():
     transaction = base_transaction()
     transaction["amount"] = "75000"
     transaction["destination_country"] = "GB"
-
     transactions = []
 
     for index in range(11):
         transactions.append(
             {
                 **transaction,
-                "transaction_id": f"750e8400-e29b-41d4-a716-4466554400{index:02d}",
-                "tx_date": (
-                    datetime(
-                        2026,
-                        10,
-                        1,
-                        10,
-                        index,
-                        tzinfo=timezone.utc,
-                    ).isoformat()
+                "transaction_id": (
+                    f"750e8400-e29b-41d4-a716-4466554400{index:02d}"
                 ),
+                "tx_date": datetime(
+                    2026, 10, 1, 10, index, tzinfo=timezone.utc
+                ).isoformat(),
             }
         )
 
     current_transaction = transactions[-1]
-
     score, risk_level, reasons = calculate_risk_score(
         current_transaction,
         transactions,
