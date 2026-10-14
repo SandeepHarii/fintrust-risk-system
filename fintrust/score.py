@@ -1,3 +1,4 @@
+﻿
 import json
 import logging
 import os
@@ -462,8 +463,7 @@ def lambda_handler(
                     "aws_request_id",
                     None,
                 ),
-            },
-            default=str,
+            }
         )
     )
 

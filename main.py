@@ -1,6 +1,8 @@
+
 import json
 import logging
 import uuid
+from datetime import datetime
 
 import boto3
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -49,6 +51,8 @@ _s3 = boto3.client("s3")
 _lambda = boto3.client("lambda")
 
 RAW_BUCKET = "fintrust-prod-raw-transactions"
+REPORT_BUCKET = "fintrust-prod-reports"
+
 INGEST_FUNCTION_NAME = "fintrust-prod-ingest"
 ALERT_FUNCTION_NAME = "fintrust-prod-alert"
 
@@ -71,13 +75,19 @@ def health() -> dict[str, str]:
 def transactions(
     account_id: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
+    page_size: int = Query(default=5, ge=1, le=100),
+    search: str | None = Query(default=None),
+    risk_filter: str | None = Query(default=None),
+    flag_filter: str | None = Query(default=None),
 ) -> dict:
     try:
         return get_transactions(
             account_id=account_id,
             page=page,
             page_size=page_size,
+            search=search,
+            risk_filter=risk_filter,
+            flag_filter=flag_filter,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -85,6 +95,7 @@ def transactions(
             detail=str(exc),
         ) from exc
     except Exception:
+        logger.exception("Unable to retrieve transactions.")
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve transactions.",
@@ -99,6 +110,82 @@ def insights() -> dict:
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve insights.",
+        )
+
+
+@app.get("/reports")
+def reports() -> dict:
+    """List monthly reports stored in S3 and generate download URLs."""
+    try:
+        paginator = _s3.get_paginator("list_objects_v2")
+
+        report_items = []
+
+        for page in paginator.paginate(
+            Bucket=REPORT_BUCKET,
+            Prefix="monthly/",
+        ):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+
+                parts = key.split("/")
+
+                # Only include files in monthly/YYYY-MM/ directories.
+                if len(parts) != 3 or parts[0] != "monthly":
+                    continue
+
+                filename = parts[2]
+                period = parts[1]
+
+                file_extension = filename.rsplit(".", 1)[-1].lower()
+
+                if file_extension not in {"csv", "json"}:
+                    continue
+
+                # Validate the reporting month.
+                try:
+                    datetime.strptime(period, "%Y-%m")
+                except ValueError:
+                    continue
+
+                download_url = _s3.generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": REPORT_BUCKET,
+                        "Key": key,
+                    },
+                    ExpiresIn=900,
+                )
+
+                report_items.append(
+                    {
+                        "period": period,
+                        "filename": filename,
+                        "format": file_extension.upper(),
+                        "key": key,
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "size_bytes": obj["Size"],
+                        "download_url": download_url,
+                        "download_url_expires_in": 900,
+                    }
+                )
+
+        report_items.sort(
+            key=lambda report: report["last_modified"],
+            reverse=True,
+        )
+
+        return {
+            "reports": report_items,
+            "count": len(report_items),
+        }
+
+    except Exception:
+        logger.exception("Unable to retrieve monthly reports.")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve monthly reports.",
         )
 
 

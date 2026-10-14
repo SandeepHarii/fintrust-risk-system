@@ -1,3 +1,4 @@
+
 import csv
 import io
 import json
@@ -130,8 +131,13 @@ def calculate_risk_pre_score(
     if source_country != destination_country:
         reasons.append("CROSS_BORDER")
 
-    if reasons:
+    # HIGH_AMOUNT is a mandatory HIGH-risk condition.
+    if "HIGH_AMOUNT" in reasons:
         return "HIGH", reasons
+
+    # Cross-border-only transactions are MEDIUM risk.
+    if "CROSS_BORDER" in reasons:
+        return "MEDIUM", reasons
 
     return "LOW", []
 

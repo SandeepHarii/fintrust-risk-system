@@ -38,7 +38,7 @@ def test_cross_border_transaction():
 
     risk_level, reasons = calculate_risk_pre_score(transaction)
 
-    assert risk_level == "HIGH"
+    assert risk_level == "MEDIUM"
     assert "CROSS_BORDER" in reasons
 
 

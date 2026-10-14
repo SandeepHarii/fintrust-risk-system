@@ -1,3 +1,4 @@
+
 from typing import Any
 
 from fintrust.db import get_db_connection
@@ -6,66 +7,119 @@ from fintrust.db import get_db_connection
 def get_transactions(
     account_id: str | None = None,
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = 5,
+    search: str | None = None,
+    risk_filter: str | None = None,
+    flag_filter: str | None = None,
 ) -> dict[str, Any]:
+
     if page < 1:
         raise ValueError("page must be greater than or equal to 1.")
 
     if page_size < 1 or page_size > 100:
         raise ValueError("page_size must be between 1 and 100.")
 
+    if risk_filter and risk_filter not in ("LOW", "MEDIUM", "HIGH"):
+        raise ValueError("risk_filter must be LOW, MEDIUM or HIGH.")
+
     offset = (page - 1) * page_size
+
+    conditions = []
+    params: list[Any] = []
+
+    if account_id:
+        conditions.append("t.account_id = %s")
+        params.append(account_id)
+
+    if risk_filter:
+        conditions.append("t.risk_flag = %s")
+        params.append(risk_filter)
+
+    if flag_filter:
+        conditions.append("""
+            EXISTS (
+                SELECT 1
+                FROM risk_events re
+                WHERE re.transaction_id = t.transaction_id
+                AND re.reason = %s
+            )
+        """)
+        params.append(flag_filter)
+
+    if search:
+        search_term = f"%{search.strip()}%"
+
+        conditions.append("""
+            (
+                CAST(t.transaction_id AS TEXT) ILIKE %s
+                OR CAST(t.account_id AS TEXT) ILIKE %s
+                OR t.transaction_type ILIKE %s
+                OR t.source_country ILIKE %s
+                OR t.destination_country ILIKE %s
+                OR CAST(t.amount AS TEXT) ILIKE %s
+            )
+        """)
+
+        params.extend([search_term] * 6)
+
+    where_clause = ""
+
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            count_query = """
+
+            # Count all transactions matching the selected filters.
+            count_query = f"""
                 SELECT COUNT(*)
-                FROM transactions
+                FROM transactions t
+                {where_clause}
             """
 
-            count_params: tuple[str, ...] = ()
-
-            if account_id:
-                count_query += """
-                    WHERE account_id = %s
-                """
-                count_params = (account_id,)
-
-            cursor.execute(count_query, count_params)
+            cursor.execute(count_query, tuple(params))
             total = cursor.fetchone()[0]
 
-            transaction_query = """
+            # Retrieve only the requested page of matching transactions.
+            transaction_query = f"""
                 SELECT
-                    transaction_id,
-                    account_id,
-                    tx_date,
-                    amount,
-                    currency,
-                    transaction_type,
-                    source_country,
-                    destination_country,
-                    risk_flag,
-                    created_at
-                FROM transactions
-            """
+                    t.transaction_id,
+                    t.account_id,
+                    t.tx_date,
+                    t.amount,
+                    t.currency,
+                    t.transaction_type,
+                    t.source_country,
+                    t.destination_country,
+                    t.risk_flag,
+                    t.created_at,
 
-            transaction_params: tuple[Any, ...] = ()
+                    COALESCE(
+                        (
+                            SELECT ARRAY_AGG(DISTINCT re.reason)
+                            FROM risk_events re
+                            WHERE re.transaction_id = t.transaction_id
+                        ),
+                        ARRAY[]::VARCHAR[]
+                    ) AS flags
 
-            if account_id:
-                transaction_query += """
-                    WHERE account_id = %s
-                """
-                transaction_params = (account_id,)
+                FROM transactions t
 
-            transaction_query += """
-                ORDER BY tx_date DESC
+                {where_clause}
+
+                ORDER BY t.tx_date DESC, t.transaction_id DESC
+
                 LIMIT %s
                 OFFSET %s
             """
 
-            transaction_params += (page_size, offset)
+            transaction_params = params + [page_size, offset]
 
-            cursor.execute(transaction_query, transaction_params)
+            cursor.execute(
+                transaction_query,
+                tuple(transaction_params),
+            )
+
             rows = cursor.fetchall()
 
     transactions = [
@@ -80,6 +134,7 @@ def get_transactions(
             "destination_country": row[7].strip(),
             "risk_flag": row[8],
             "created_at": row[9].isoformat(),
+            "flags": row[10] or [],
         }
         for row in rows
     ]
