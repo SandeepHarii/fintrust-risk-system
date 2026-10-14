@@ -4,6 +4,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import boto3
@@ -63,8 +64,6 @@ def calculate_risk_score(
         str(transaction["tx_date"]).replace("Z", "+00:00")
     )
 
-    # Normalise timestamps so comparisons work with both
-    # timezone-aware and timezone-naive database/test values.
     if transaction_time.tzinfo is None:
         transaction_time = transaction_time.replace(
             tzinfo=timezone.utc
@@ -98,8 +97,6 @@ def calculate_risk_score(
         score += HIGH_VELOCITY_POINTS
         reasons.append("HIGH_VELOCITY")
 
-    # Mandatory high-risk rules take priority over the
-    # weighted score thresholds.
     if (
         "HIGH_AMOUNT" in reasons
         or "HIGH_VELOCITY" in reasons
@@ -112,6 +109,122 @@ def calculate_risk_score(
         risk_level = "LOW"
 
     return score, risk_level, reasons
+
+
+def insert_transaction_if_missing(
+    conn: Any,
+    transaction: dict[str, Any],
+) -> None:
+    """Insert a transaction or verify an existing transaction is identical."""
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO transactions (
+                transaction_id,
+                account_id,
+                tx_date,
+                amount,
+                currency,
+                transaction_type,
+                source_country,
+                destination_country
+            )
+            VALUES (
+                %(transaction_id)s,
+                %(account_id)s,
+                %(tx_date)s,
+                %(amount)s,
+                %(currency)s,
+                %(transaction_type)s,
+                %(source_country)s,
+                %(destination_country)s
+            )
+            ON CONFLICT (transaction_id) DO NOTHING
+            """,
+            {
+                "transaction_id": transaction["transaction_id"],
+                "account_id": transaction["account_id"],
+                "tx_date": transaction["tx_date"],
+                "amount": transaction["amount"],
+                "currency": transaction["currency"],
+                "transaction_type": transaction["transaction_type"],
+                "source_country": transaction["source_country"],
+                "destination_country": transaction["destination_country"],
+            },
+        )
+
+        cursor.execute(
+            """
+            SELECT
+                account_id,
+                tx_date,
+                amount,
+                currency,
+                transaction_type,
+                source_country,
+                destination_country
+            FROM transactions
+            WHERE transaction_id = %s
+            """,
+            (transaction["transaction_id"],),
+        )
+
+        existing = cursor.fetchone()
+
+    if existing is None:
+        raise ValueError(
+            f"Transaction insertion failed: "
+            f"{transaction['transaction_id']}"
+        )
+
+    existing_timestamp = existing[1]
+
+    incoming_timestamp = datetime.fromisoformat(
+        str(transaction["tx_date"]).replace("Z", "+00:00")
+    )
+
+    if existing_timestamp.tzinfo is None:
+        existing_timestamp = existing_timestamp.replace(
+            tzinfo=timezone.utc
+        )
+
+    if incoming_timestamp.tzinfo is None:
+        incoming_timestamp = incoming_timestamp.replace(
+            tzinfo=timezone.utc
+        )
+
+    existing_details = {
+        "account_id": str(existing[0]),
+        "tx_date": existing_timestamp.astimezone(timezone.utc),
+        "amount": Decimal(str(existing[2])).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        ),
+        "currency": str(existing[3]).strip(),
+        "transaction_type": str(existing[4]),
+        "source_country": str(existing[5]).strip(),
+        "destination_country": str(existing[6]).strip(),
+    }
+
+    incoming_details = {
+        "account_id": str(transaction["account_id"]),
+        "tx_date": incoming_timestamp.astimezone(timezone.utc),
+        "amount": Decimal(str(transaction["amount"])).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        ),
+        "currency": str(transaction["currency"]).strip(),
+        "transaction_type": str(transaction["transaction_type"]),
+        "source_country": str(transaction["source_country"]).strip(),
+        "destination_country": str(transaction["destination_country"]).strip(),
+    }
+
+    if existing_details != incoming_details:
+        raise ValueError(
+            "Transaction ID already exists with different transaction details: "
+            f"{transaction['transaction_id']}"
+        )
 
 
 def get_account_transactions(
@@ -165,6 +278,48 @@ def update_transaction_risk(
             raise ValueError(
                 f"Transaction not found: {transaction_id}"
             )
+
+
+def get_existing_risk_event(
+    conn: Any,
+    transaction_id: str,
+) -> dict[str, Any] | None:
+    """Retrieve an existing risk event and associated alert."""
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                re.risk_event_id,
+                re.reason,
+                re.risk_level,
+                a.alert_id,
+                a.alert_status
+            FROM risk_events re
+            LEFT JOIN alerts a
+                ON a.risk_event_id = re.risk_event_id
+            WHERE re.transaction_id = %s
+            ORDER BY re.created_at DESC
+            LIMIT 1
+            """,
+            (transaction_id,),
+        )
+
+        row = cursor.fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "risk_event_id": str(row[0]),
+        "risk_reasons": (
+            []
+            if row[1] == "NONE"
+            else row[1].split(",")
+        ),
+        "risk_level": row[2],
+        "alert_id": str(row[3]) if row[3] else None,
+        "alert_status": row[4],
+    }
 
 
 def insert_postgres_risk_event(
@@ -337,19 +492,87 @@ def invoke_alert_lambda(
 def process_transaction(
     transaction: dict[str, Any],
 ) -> dict[str, Any]:
-    """Calculate and persist the final risk result."""
+    """Insert, score and persist a transaction idempotently."""
     alert_id = None
 
     with get_db_connection() as conn:
+        insert_transaction_if_missing(
+            conn=conn,
+            transaction=transaction,
+        )
+
         account_transactions = get_account_transactions(
             conn=conn,
             account_id=str(transaction["account_id"]),
         )
 
-        risk_score, risk_level, risk_reasons = calculate_risk_score(
-            transaction=transaction,
-            account_transactions=account_transactions,
+        risk_score, calculated_level, calculated_reasons = (
+            calculate_risk_score(
+                transaction=transaction,
+                account_transactions=account_transactions,
+            )
         )
+
+        existing_event = get_existing_risk_event(
+            conn=conn,
+            transaction_id=str(transaction["transaction_id"]),
+        )
+
+        if existing_event:
+            risk_event_id = existing_event["risk_event_id"]
+            risk_level = existing_event["risk_level"]
+            risk_reasons = existing_event["risk_reasons"]
+            alert_id = existing_event["alert_id"]
+            alert_status = existing_event["alert_status"]
+
+            # Reconstruct the original score from persisted reasons.
+            points = {
+                "HIGH_AMOUNT": HIGH_AMOUNT_POINTS,
+                "HIGH_VELOCITY": HIGH_VELOCITY_POINTS,
+                "CROSS_BORDER": CROSS_BORDER_POINTS,
+            }
+
+            risk_score = sum(
+                points.get(reason, 0)
+                for reason in risk_reasons
+            )
+
+            # Recover an alert if an earlier processing attempt
+            # created the risk event but did not create its alert.
+            if risk_level == "HIGH" and not alert_id:
+                alert_id = create_alert(
+                    conn=conn,
+                    transaction=transaction,
+                    risk_event_id=risk_event_id,
+                )
+                alert_status = "PENDING"
+
+        else:
+            risk_level = calculated_level
+            risk_reasons = calculated_reasons
+
+            update_transaction_risk(
+                conn=conn,
+                transaction_id=str(transaction["transaction_id"]),
+                risk_level=risk_level,
+            )
+
+            risk_event_id = insert_postgres_risk_event(
+                conn=conn,
+                transaction=transaction,
+                risk_level=risk_level,
+                risk_reasons=risk_reasons,
+            )
+
+            alert_status = None
+
+            if risk_level == "HIGH":
+                alert_id = create_alert(
+                    conn=conn,
+                    transaction=transaction,
+                    risk_event_id=risk_event_id,
+                )
+                alert_status = "PENDING"
 
         update_transaction_risk(
             conn=conn,
@@ -357,32 +580,25 @@ def process_transaction(
             risk_level=risk_level,
         )
 
-        risk_event_id = insert_postgres_risk_event(
-            conn=conn,
-            transaction=transaction,
-            risk_level=risk_level,
-            risk_reasons=risk_reasons,
-        )
-
-        if risk_level == "HIGH":
-            alert_id = create_alert(
-                conn=conn,
-                transaction=transaction,
-                risk_event_id=risk_event_id,
-            )
-
+    # DynamoDB is written after the PostgreSQL transaction commits.
+    # A retry can recover this write from the existing PostgreSQL event.
     put_risk_event(
         account_id=str(transaction["account_id"]),
+        transaction_id=str(transaction["transaction_id"]),
         transaction_timestamp=str(transaction["tx_date"]),
         risk_event={
-            "transaction_id": str(transaction["transaction_id"]),
             "risk_score": risk_score,
             "risk_level": risk_level,
             "risk_reasons": risk_reasons,
         },
     )
 
-    if risk_level == "HIGH" and alert_id:
+    # Never resend an alert already marked SENT or RESOLVED.
+    if (
+        risk_level == "HIGH"
+        and alert_id
+        and alert_status not in {"SENT", "RESOLVED"}
+    ):
         try:
             invoke_alert_lambda(
                 alert_id=alert_id,

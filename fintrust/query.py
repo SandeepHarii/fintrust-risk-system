@@ -19,6 +19,12 @@ def get_transactions(
     if page_size < 1 or page_size > 100:
         raise ValueError("page_size must be between 1 and 100.")
 
+    if risk_filter:
+        risk_filter = risk_filter.strip().upper()
+
+    if flag_filter:
+        flag_filter = flag_filter.strip().upper()
+
     if risk_filter and risk_filter not in ("LOW", "MEDIUM", "HIGH"):
         raise ValueError("risk_filter must be LOW, MEDIUM or HIGH.")
 
@@ -35,32 +41,71 @@ def get_transactions(
         conditions.append("t.risk_flag = %s")
         params.append(risk_filter)
 
+    # Match individual reasons, even when multiple reasons
+    # are stored together in a comma-separated string.
     if flag_filter:
         conditions.append("""
             EXISTS (
                 SELECT 1
                 FROM risk_events re
+                CROSS JOIN LATERAL
+                    unnest(string_to_array(re.reason, ',')) AS parts(reason_part)
                 WHERE re.transaction_id = t.transaction_id
-                AND re.reason = %s
+                  AND UPPER(BTRIM(parts.reason_part)) = %s
             )
         """)
         params.append(flag_filter)
 
-    if search:
-        search_term = f"%{search.strip()}%"
+    
+    if search and search.strip():
+        search_value = search.strip()
+        search_term = f"%{search_value}%"
+
+        # Normalise the input and formatted dates to support
+        # searches with or without spaces and punctuation.
+        compact_search = "".join(
+            character
+            for character in search_value.lower()
+            if character.isalnum()
+        )
+        compact_term = f"%{compact_search}%"
 
         conditions.append("""
             (
-                CAST(t.transaction_id AS TEXT) ILIKE %s
-                OR CAST(t.account_id AS TEXT) ILIKE %s
-                OR t.transaction_type ILIKE %s
-                OR t.source_country ILIKE %s
-                OR t.destination_country ILIKE %s
-                OR CAST(t.amount AS TEXT) ILIKE %s
+                -- Search every column in the transaction record.
+                to_jsonb(t)::TEXT ILIKE %s
+
+                -- Search every column in associated risk events.
+                OR EXISTS (
+                    SELECT 1
+                    FROM risk_events re
+                    WHERE re.transaction_id = t.transaction_id
+                      AND to_jsonb(re)::TEXT ILIKE %s
+                )
+
+                -- Search transaction dates in common formats.
+                OR TO_CHAR(t.tx_date, 'DD Mon YYYY') ILIKE %s
+                OR TO_CHAR(t.tx_date, 'FMDD Month YYYY') ILIKE %s
+                OR TO_CHAR(t.tx_date, 'DD/MM/YYYY') ILIKE %s
+                OR TO_CHAR(t.tx_date, 'DD-MM-YYYY') ILIKE %s
+
+                -- Also support date searches without spaces
+                -- or punctuation, such as 11oct.
+                OR REGEXP_REPLACE(
+                    LOWER(TO_CHAR(t.tx_date, 'DD Mon YYYY')),
+                    '[^a-z0-9]', '', 'g'
+                ) ILIKE %s
+
+                OR REGEXP_REPLACE(
+                    LOWER(TO_CHAR(t.tx_date, 'FMDD Month YYYY')),
+                    '[^a-z0-9]', '', 'g'
+                ) ILIKE %s
             )
         """)
 
-        params.extend([search_term] * 6)
+        params.extend(
+            [search_term] * 6 + [compact_term] * 2
+        )
 
     where_clause = ""
 
@@ -96,9 +141,14 @@ def get_transactions(
 
                     COALESCE(
                         (
-                            SELECT ARRAY_AGG(DISTINCT re.reason)
+                            SELECT ARRAY_AGG(
+                                DISTINCT BTRIM(parts.reason_part)::VARCHAR
+                            )
                             FROM risk_events re
+                            CROSS JOIN LATERAL
+                                unnest(string_to_array(re.reason, ',')) AS parts(reason_part)
                             WHERE re.transaction_id = t.transaction_id
+                              AND UPPER(BTRIM(parts.reason_part)) <> 'NONE'
                         ),
                         ARRAY[]::VARCHAR[]
                     ) AS flags

@@ -1,3 +1,4 @@
+
 import os
 from typing import Any
 
@@ -16,14 +17,17 @@ table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 
 def put_risk_event(
     account_id: str,
+    transaction_id: str,
     transaction_timestamp: str,
     risk_event: dict[str, Any],
 ) -> None:
     """Store a risk event in DynamoDB."""
+
     item = {
-        "account_id": account_id,
-        "transaction_timestamp": transaction_timestamp,
         **risk_event,
+        "account_id": account_id,
+        "transaction_id": transaction_id,
+        "transaction_timestamp": transaction_timestamp,
     }
 
     table.put_item(Item=item)
@@ -31,13 +35,14 @@ def put_risk_event(
 
 def get_risk_event(
     account_id: str,
-    transaction_timestamp: str,
+    transaction_id: str,
 ) -> dict[str, Any] | None:
-    """Retrieve a single risk event."""
+    """Retrieve a single risk event using its account and transaction ID."""
+
     response = table.get_item(
         Key={
             "account_id": account_id,
-            "transaction_timestamp": transaction_timestamp,
+            "transaction_id": transaction_id,
         }
     )
 
@@ -48,8 +53,21 @@ def get_account_risk_events(
     account_id: str,
 ) -> list[dict[str, Any]]:
     """Retrieve all risk events for an account."""
+
+    items = []
+
     response = table.query(
         KeyConditionExpression=Key("account_id").eq(account_id)
     )
 
-    return response.get("Items", [])
+    items.extend(response.get("Items", []))
+
+    while "LastEvaluatedKey" in response:
+        response = table.query(
+            KeyConditionExpression=Key("account_id").eq(account_id),
+            ExclusiveStartKey=response["LastEvaluatedKey"],
+        )
+
+        items.extend(response.get("Items", []))
+
+    return items

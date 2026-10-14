@@ -11,8 +11,6 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from fintrust.db import get_db_connection, insert_transaction
-from fintrust.dynamo import put_risk_event
 from fintrust.validators import validate_transaction
 
 
@@ -38,9 +36,8 @@ METRIC_NAMESPACE = "FinTrust/ETL"
 def publish_metrics(
     processed_transactions: int,
     ingestion_errors: int,
-    high_risk_transactions: int,
 ) -> None:
-    """Publish aggregated ETL metrics to CloudWatch."""
+    """Publish aggregated ingestion metrics to CloudWatch."""
     try:
         _cloudwatch.put_metric_data(
             Namespace=METRIC_NAMESPACE,
@@ -67,17 +64,6 @@ def publish_metrics(
                     "Value": ingestion_errors,
                     "Unit": "Count",
                 },
-                {
-                    "MetricName": "HighRiskTransactions",
-                    "Dimensions": [
-                        {
-                            "Name": "Environment",
-                            "Value": "prod",
-                        }
-                    ],
-                    "Value": high_risk_transactions,
-                    "Unit": "Count",
-                },
             ],
         )
 
@@ -88,11 +74,11 @@ def publish_metrics(
                     "namespace": METRIC_NAMESPACE,
                     "processed_transactions": processed_transactions,
                     "ingestion_errors": ingestion_errors,
-                    "high_risk_transactions": high_risk_transactions,
                 },
                 default=str,
             )
         )
+
     except Exception as exc:
         logger.error(
             json.dumps(
@@ -104,42 +90,6 @@ def publish_metrics(
                 default=str,
             )
         )
-
-
-def calculate_risk_pre_score(
-    transaction: dict[str, Any],
-) -> tuple[str, list[str]]:
-    """Calculate the initial risk level from transaction-level rules."""
-    reasons: list[str] = []
-
-    try:
-        amount = float(transaction["amount"])
-    except (KeyError, TypeError, ValueError):
-        return "HIGH", ["INVALID_AMOUNT"]
-
-    if amount > 50000:
-        reasons.append("HIGH_AMOUNT")
-
-    source_country = str(
-        transaction["source_country"]
-    ).strip().upper()
-
-    destination_country = str(
-        transaction["destination_country"]
-    ).strip().upper()
-
-    if source_country != destination_country:
-        reasons.append("CROSS_BORDER")
-
-    # HIGH_AMOUNT is a mandatory HIGH-risk condition.
-    if "HIGH_AMOUNT" in reasons:
-        return "HIGH", reasons
-
-    # Cross-border-only transactions are MEDIUM risk.
-    if "CROSS_BORDER" in reasons:
-        return "MEDIUM", reasons
-
-    return "LOW", []
 
 
 def quarantine_row(
@@ -195,17 +145,14 @@ def quarantine_row(
 
 def send_transaction_to_queue(
     transaction: dict[str, Any],
-    risk_level: str,
-    risk_reasons: list[str],
 ) -> None:
-    """Send a valid transaction to the FinTrust FIFO transaction queue."""
+    """Send a validated transaction to the FinTrust FIFO transaction queue."""
     account_id = str(transaction["account_id"])
     transaction_id = str(transaction["transaction_id"])
 
+    # Risk scoring is performed downstream by the scoring Lambda.
     message = {
         "transaction": transaction,
-        "risk_level": risk_level,
-        "risk_reasons": risk_reasons,
     }
 
     response = _sqs.send_message(
@@ -224,8 +171,6 @@ def send_transaction_to_queue(
                 "event": "transaction_queued",
                 "transaction_id": transaction_id,
                 "account_id": account_id,
-                "risk_level": risk_level,
-                "risk_reasons": risk_reasons,
                 "queue_url": TRANSACTION_QUEUE_URL,
                 "message_id": response.get("MessageId"),
             },
@@ -234,91 +179,12 @@ def send_transaction_to_queue(
     )
 
 
-def store_transaction_in_rds(
-    transaction: dict[str, Any],
-    risk_level: str,
-) -> None:
-    """Insert a validated transaction into PostgreSQL."""
-    with get_db_connection() as conn:
-        insert_transaction(
-            conn=conn,
-            transaction=transaction,
-            risk_flag=risk_level,
-        )
-
-    logger.info(
-        json.dumps(
-            {
-                "event": "transaction_stored_rds",
-                "transaction_id": transaction.get("transaction_id"),
-                "account_id": transaction.get("account_id"),
-                "risk_level": risk_level,
-            },
-            default=str,
-        )
-    )
-
-
-def store_risk_event_in_dynamodb(
-    transaction: dict[str, Any],
-    risk_level: str,
-    risk_reasons: list[str],
-) -> None:
-    """Store the transaction risk event in DynamoDB."""
-    account_id = str(transaction["account_id"])
-    transaction_timestamp = str(transaction["tx_date"])
-    transaction_id = str(transaction["transaction_id"])
-
-    risk_event = {
-        "transaction_id": transaction_id,
-        "risk_level": risk_level,
-        "risk_reason": (
-            ",".join(risk_reasons) if risk_reasons else "NONE"
-        ),
-    }
-
-    put_risk_event(
-        account_id=account_id,
-        transaction_timestamp=transaction_timestamp,
-        risk_event=risk_event,
-    )
-
-    logger.info(
-        json.dumps(
-            {
-                "event": "risk_event_stored_dynamodb",
-                "transaction_id": transaction_id,
-                "account_id": account_id,
-                "transaction_timestamp": transaction_timestamp,
-                "risk_level": risk_level,
-                "risk_reasons": risk_reasons,
-            },
-            default=str,
-        )
-    )
-
-
 def process_valid_transaction(
     transaction: dict[str, Any],
-    risk_level: str,
-    risk_reasons: list[str],
 ) -> None:
-    """Persist and queue a validated transaction."""
-    store_transaction_in_rds(
-        transaction=transaction,
-        risk_level=risk_level,
-    )
-
-    store_risk_event_in_dynamodb(
-        transaction=transaction,
-        risk_level=risk_level,
-        risk_reasons=risk_reasons,
-    )
-
+    """Send a validated transaction to SQS FIFO for risk scoring."""
     send_transaction_to_queue(
         transaction=transaction,
-        risk_level=risk_level,
-        risk_reasons=risk_reasons,
     )
 
 
@@ -326,7 +192,7 @@ def store_processed_parquet(
     transactions: list[dict[str, Any]],
     source_key: str,
 ) -> str | None:
-    """Store successfully processed transactions as a Parquet object in S3."""
+    """Store successfully queued transactions as Parquet in S3."""
     if not transactions:
         logger.info(
             json.dumps(
@@ -341,15 +207,18 @@ def store_processed_parquet(
     table = pa.Table.from_pylist(transactions)
 
     buffer = io.BytesIO()
+
     pq.write_table(
         table,
         buffer,
         compression="snappy",
     )
+
     buffer.seek(0)
 
     source_filename = source_key.rsplit("/", 1)[-1]
     source_stem = source_filename.rsplit(".", 1)[0]
+
     timestamp = datetime.now(timezone.utc).strftime(
         "%Y%m%dT%H%M%S%fZ"
     )
@@ -384,11 +253,10 @@ def lambda_handler(
     event: dict[str, Any],
     context: Any,
 ) -> dict[str, Any]:
-    """Process a FinTrust transaction CSV uploaded to S3."""
+    """Validate an S3 transaction CSV and queue valid transactions."""
     total_rows = 0
     valid_rows = 0
     invalid_rows = 0
-    high_risk_rows = 0
 
     logger.info(
         json.dumps(
@@ -404,8 +272,11 @@ def lambda_handler(
         )
     )
 
+    processed_files: list[dict[str, Any]] = []
+
     for record in event.get("Records", []):
         bucket = record["s3"]["bucket"]["name"]
+
         object_key = unquote_plus(
             record["s3"]["object"]["key"]
         )
@@ -418,8 +289,8 @@ def lambda_handler(
         csv_content = response["Body"].read().decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(csv_content))
 
-        # Each source CSV gets its own processed Parquet object.
         processed_transactions: list[dict[str, Any]] = []
+
         file_total_rows = 0
         file_valid_rows = 0
         file_invalid_rows = 0
@@ -431,37 +302,12 @@ def lambda_handler(
             is_valid, errors = validate_transaction(row)
 
             if is_valid:
-                risk_level, risk_reasons = calculate_risk_pre_score(
-                    row
-                )
-
-                logger.info(
-                    json.dumps(
-                        {
-                            "event": "transaction_pre_scored",
-                            "row_number": row_number,
-                            "transaction_id": row.get(
-                                "transaction_id"
-                            ),
-                            "account_id": row.get("account_id"),
-                            "risk_level": risk_level,
-                            "risk_reasons": risk_reasons,
-                        }
-                    )
-                )
-
-                # Only collect the record after all existing persistence
-                # and queue operations have succeeded.
                 process_valid_transaction(
                     transaction=row,
-                    risk_level=risk_level,
-                    risk_reasons=risk_reasons,
                 )
 
                 processed_record = dict(row)
-                processed_record["risk_level"] = risk_level
-                processed_record["risk_reasons"] = risk_reasons
-                processed_record["processed_at"] = (
+                processed_record["queued_at"] = (
                     datetime.now(timezone.utc).isoformat()
                 )
 
@@ -470,13 +316,7 @@ def lambda_handler(
                 valid_rows += 1
                 file_valid_rows += 1
 
-                if risk_level == "HIGH":
-                    high_risk_rows += 1
-
             else:
-                invalid_rows += 1
-                file_invalid_rows += 1
-
                 quarantine_row(
                     row=row,
                     row_number=row_number,
@@ -485,24 +325,33 @@ def lambda_handler(
                     source_key=object_key,
                 )
 
+                invalid_rows += 1
+                file_invalid_rows += 1
+
         processed_key = store_processed_parquet(
             transactions=processed_transactions,
             source_key=object_key,
         )
 
+        file_result = {
+            "bucket": bucket,
+            "object_key": object_key,
+            "total_rows": file_total_rows,
+            "valid_rows": file_valid_rows,
+            "invalid_rows": file_invalid_rows,
+            "processed_bucket": (
+                PROCESSED_BUCKET if processed_key else None
+            ),
+            "processed_key": processed_key,
+        }
+
+        processed_files.append(file_result)
+
         logger.info(
             json.dumps(
                 {
                     "event": "csv_processed",
-                    "bucket": bucket,
-                    "object_key": object_key,
-                    "total_rows": file_total_rows,
-                    "valid_rows": file_valid_rows,
-                    "invalid_rows": file_invalid_rows,
-                    "processed_bucket": (
-                        PROCESSED_BUCKET if processed_key else None
-                    ),
-                    "processed_key": processed_key,
+                    **file_result,
                 }
             )
         )
@@ -510,17 +359,27 @@ def lambda_handler(
     publish_metrics(
         processed_transactions=valid_rows,
         ingestion_errors=invalid_rows,
-        high_risk_transactions=high_risk_rows,
+    )
+
+    result = {
+        "message": "CSV ingestion completed successfully",
+        "total_rows": total_rows,
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "files": processed_files,
+    }
+
+    logger.info(
+        json.dumps(
+            {
+                "event": "ingestion_completed",
+                **result,
+            },
+            default=str,
+        )
     )
 
     return {
         "statusCode": 200,
-        "body": json.dumps(
-            {
-                "message": "CSV processed successfully",
-                "total_rows": total_rows,
-                "valid_rows": valid_rows,
-                "invalid_rows": invalid_rows,
-            }
-        ),
+        "body": json.dumps(result, default=str),
     }

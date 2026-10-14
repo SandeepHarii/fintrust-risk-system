@@ -1,3 +1,4 @@
+
 import boto3
 import pytest
 from moto import mock_aws
@@ -54,17 +55,11 @@ def aws_resources():
             TableName=dynamodb_table,
             KeySchema=[
                 {"AttributeName": "account_id", "KeyType": "HASH"},
-                {
-                    "AttributeName": "transaction_timestamp",
-                    "KeyType": "RANGE",
-                },
+                {"AttributeName": "transaction_id", "KeyType": "RANGE"},
             ],
             AttributeDefinitions=[
                 {"AttributeName": "account_id", "AttributeType": "S"},
-                {
-                    "AttributeName": "transaction_timestamp",
-                    "AttributeType": "S",
-                },
+                {"AttributeName": "transaction_id", "AttributeType": "S"},
             ],
             BillingMode="PAY_PER_REQUEST",
         )
