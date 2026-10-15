@@ -95,7 +95,7 @@ def test_process_valid_transaction_only_queues_transaction(monkeypatch):
     transaction = base_transaction()
     queued_transactions = []
 
-    def fake_send_transaction_to_queue(transaction):
+    def fake_send_transaction_to_queue(transaction, upload_id=None):
         queued_transactions.append(transaction)
 
     monkeypatch.setattr(
