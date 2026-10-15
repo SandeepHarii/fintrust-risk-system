@@ -2856,6 +2856,31 @@ td:first-child strong {
 }
 
 /* ------------------------------------------------------------------ *
+ * Global top-right notification
+ * ------------------------------------------------------------------ */
+
+.upload-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+}
+
+.upload-toast.error {
+  border-left: 4px solid #ff6b6b;
+}
+
+@media (max-width: 600px) {
+  .upload-toast {
+    top: 12px;
+    right: 12px;
+    width: calc(100vw - 24px);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Reduced motion accessibility
  * ------------------------------------------------------------------ */
 

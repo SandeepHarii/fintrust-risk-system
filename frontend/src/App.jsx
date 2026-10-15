@@ -265,33 +265,39 @@ function Empty({ title, body }) {
 const PROCESSING_STAGES = [
   {
     key: 'received',
+    apiKey: 'csv_uploaded',
     title: 'File Received',
     description: 'CSV uploaded to Amazon S3 and assigned an upload ID.',
   },
   {
     key: 'started',
+    apiKey: 'ingestion_started',
     title: 'Processing Started',
     description: 'AWS Step Functions has started the ingestion workflow.',
   },
   {
     key: 'validation',
+    apiKey: 'validation',
     title: 'Data Validation',
     description:
       'Records are checked for valid formats, required fields and data quality.',
   },
   {
     key: 'queued',
+    apiKey: 'transactions_queued',
     title: 'Transactions Queued',
     description: 'Valid records are added to Amazon SQS for processing.',
   },
   {
     key: 'risk',
+    apiKey: 'risk_scoring',
     title: 'Risk Assessment',
     description:
       "Transactions are evaluated against FinTrust's risk detection rules.",
   },
   {
     key: 'saved',
+    apiKey: 'results_persisted',
     title: 'Results Saved',
     description:
       'Processed transactions and risk results are saved to the database.',
@@ -299,63 +305,114 @@ const PROCESSING_STAGES = [
 ]
 
 /* ------------------------------------------------------------------
- * CSV Processing — screen component (horizontal stepper)
+ * CSV Processing — global toast notification
+ * ------------------------------------------------------------------ */
+
+function ToastNotification({ toast, onDismiss }) {
+  if (!toast) return null
+
+  return (
+    <div
+      className={`upload-toast ${toast.type || 'success'}`}
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      aria-live="polite"
+    >
+      <div className="toast-icon" aria-hidden="true">
+        {toast.type === 'error' ? '!' : '✓'}
+      </div>
+
+      <div className="toast-content">
+        <strong>{toast.title}</strong>
+        <span>{toast.message}</span>
+      </div>
+
+      <button
+        className="toast-close"
+        type="button"
+        aria-label="Dismiss notification"
+        onClick={onDismiss}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------
+ * CSV Processing — screen component
  * ------------------------------------------------------------------ */
 
 function ProcessingScreen({
-  uploadId = 'UP-20261015-001',
-  fileName = 'fintrust_transactions.csv',
-  currentStage = 3,
-  totalStages = 6,
-  stageProgress = 65,
-  totalRecords = 250,
-  validRecords = 245,
-  quarantinedRecords = 5,
-  showToast = false,
-  onDismissToast,
+  uploadId,
+  fileName,
+  progress,
+  progressError,
 }) {
-  const overallProgress = Math.round((currentStage / totalStages) * 100)
-  const activeStageTitle =
-    PROCESSING_STAGES[currentStage - 1]?.title ?? 'Data Validation'
+  const status = String(progress?.status ?? 'PROCESSING').toUpperCase()
+  const isCompleted = status === 'COMPLETED'
+  const isFailed = status === 'FAILED'
 
-  function getStageState(index) {
-    const position = index + 1
-    if (position < currentStage) return 'completed'
-    if (position === currentStage) return 'active'
+  const stageStatuses = progress?.stages ?? {}
+
+  const completedCount = PROCESSING_STAGES.filter(
+    (stage) =>
+      String(stageStatuses[stage.apiKey] ?? '').toUpperCase() === 'COMPLETED',
+  ).length
+
+  const overallProgress = isCompleted
+    ? 100
+    : Math.round((completedCount / PROCESSING_STAGES.length) * 100)
+
+  const currentStageKey = progress?.current_stage
+
+  const activeStage = PROCESSING_STAGES.find(
+    (stage) => stage.apiKey === currentStageKey,
+  )
+
+  const activeStageTitle = isCompleted
+    ? 'Processing Complete'
+    : activeStage?.title ?? 'Awaiting progress'
+
+  function getStageState(stage) {
+    const stageStatus = String(
+      stageStatuses[stage.apiKey] ?? '',
+    ).toUpperCase()
+
+    if (stageStatus === 'COMPLETED') return 'completed'
+    if (stageStatus === 'IN_PROGRESS') return 'active'
+    if (stageStatus === 'FAILED') return 'failed'
+
+    if (isFailed && stage.apiKey === currentStageKey) {
+      return 'failed'
+    }
+
     return 'pending'
   }
 
-  function getStageStatusLabel(index) {
-    const state = getStageState(index)
+  function getStageStatusLabel(stage) {
+    const state = getStageState(stage)
+
     if (state === 'completed') return 'Completed'
     if (state === 'active') return 'In Progress'
+    if (state === 'failed') return 'Failed'
+
     return 'Pending'
   }
 
+  const statusLabel = isCompleted
+    ? 'Completed'
+    : isFailed
+      ? 'Failed'
+      : 'Processing'
+
+  const statusDot = isCompleted
+    ? 'online'
+    : isFailed
+      ? 'offline'
+      : 'default'
+
   return (
     <div className="upload-preview">
-      {showToast && (
-        <div className="upload-toast" role="status" aria-live="polite">
-          <div className="toast-icon" aria-hidden="true">
-            ✓
-          </div>
-
-          <div className="toast-content">
-            <strong>Upload accepted</strong>
-            <span>Your CSV file was received. Processing has started.</span>
-          </div>
-
-          <button
-            className="toast-close"
-            type="button"
-            aria-label="Dismiss notification"
-            onClick={onDismissToast}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
       <section className="content-card upload-card">
         <div className="section-heading upload-header">
           <div>
@@ -368,8 +425,8 @@ function ProcessingScreen({
           </div>
 
           <span className="upload-status">
-            <StatusDot status="online" />
-            Processing
+            <StatusDot status={statusDot} />
+            {statusLabel}
           </span>
         </div>
 
@@ -395,11 +452,13 @@ function ProcessingScreen({
             <div>
               <h3>Overall Progress</h3>
               <p>
-                Stage {currentStage} of {totalStages} completed
+                {completedCount} of {PROCESSING_STAGES.length} stages completed
               </p>
             </div>
 
-            <strong className="progress-percentage">{overallProgress}%</strong>
+            <strong className="progress-percentage">
+              {overallProgress}%
+            </strong>
           </div>
 
           <div className="upload-progress">
@@ -410,32 +469,38 @@ function ProcessingScreen({
           </div>
 
           <div className="progress-footer">
-            <span>Processing your transactions</span>
             <span>
-              {currentStage} / {totalStages} stages
+              {isCompleted
+                ? 'All processing stages completed'
+                : isFailed
+                  ? 'Processing failed'
+                  : 'Processing your transactions'}
+            </span>
+
+            <span>
+              {completedCount} / {PROCESSING_STAGES.length} stages
             </span>
           </div>
         </div>
 
-        {/* Horizontal stepper with descriptions */}
         <div className="upload-stages-section">
           <div className="upload-section-heading">
             <h3>Processing Stages</h3>
             <span>
-              {currentStage} of {totalStages} completed
+              {completedCount} of {PROCESSING_STAGES.length} completed
             </span>
           </div>
 
           <div className="stepper">
             {PROCESSING_STAGES.map((stage, index) => {
-              const state = getStageState(index)
+              const state = getStageState(stage)
               const position = index + 1
               const isLast = index === PROCESSING_STAGES.length - 1
 
               return (
                 <div key={stage.key} className={`stepper-step ${state}`}>
                   <span className="stepper-status">
-                    {getStageStatusLabel(index)}
+                    {getStageStatusLabel(stage)}
                   </span>
 
                   <div className="stepper-track">
@@ -465,25 +530,46 @@ function ProcessingScreen({
           <div className="upload-summary-grid">
             <div className="upload-summary-item">
               <span>TOTAL RECORDS</span>
-              <strong>{formatNumber(totalRecords)}</strong>
+              <strong>{formatNumber(progress?.total_records)}</strong>
             </div>
 
             <div className="upload-summary-item valid">
               <span>VALID RECORDS</span>
-              <strong>{formatNumber(validRecords)}</strong>
+              <strong>{formatNumber(progress?.valid_records)}</strong>
             </div>
 
             <div className="upload-summary-item quarantined">
               <span>QUARANTINED</span>
-              <strong>{formatNumber(quarantinedRecords)}</strong>
+              <strong>{formatNumber(progress?.quarantined_records)}</strong>
             </div>
           </div>
         </div>
 
+        {isFailed && progress?.failure_reason && (
+          <div className="upload-banner" role="alert">
+            <StatusDot status="offline" />
+            <span>Processing failed: {progress.failure_reason}</span>
+          </div>
+        )}
+
+        {progressError && !isCompleted && !isFailed && (
+          <div className="upload-banner" role="status">
+            <StatusDot status="default" />
+            <span>
+              Unable to refresh progress: {progressError}. Retrying
+              automatically.
+            </span>
+          </div>
+        )}
+
         <div className="upload-card-footer">
           <div className="refresh-indicator">
-            <StatusDot status="online" />
-            Automatically refreshing status
+            <StatusDot status={statusDot} />
+            {isCompleted
+              ? 'Processing finished'
+              : isFailed
+                ? 'Processing stopped'
+                : 'Live updates · checking every second'}
           </div>
 
           <span>FinTrust Transaction Monitoring</span>
@@ -1222,8 +1308,6 @@ function TransactionsScreen({
   uploading,
   uploadMessage,
   processingJob,
-  showUploadToast,
-  onDismissToast,
 }) {
   const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState('All')
@@ -1277,18 +1361,14 @@ function TransactionsScreen({
 
   return (
     <>
-     {/* <ProcessingScreen
-        uploadId={processingJob?.uploadId ?? 'UP-20261015-001'}
-        fileName={processingJob?.fileName ?? 'fintrust_transactions.csv'}
-        currentStage={processingJob?.currentStage ?? 3}
-        totalStages={processingJob?.totalStages ?? 6}
-        stageProgress={processingJob?.stageProgress ?? 65}
-        totalRecords={processingJob?.totalRecords ?? 250}
-        validRecords={processingJob?.validRecords ?? 245}
-        quarantinedRecords={processingJob?.quarantinedRecords ?? 5}
-        showToast={showUploadToast}
-        onDismissToast={onDismissToast}
-      /> */}
+      {processingJob && (
+        <ProcessingScreen
+          uploadId={processingJob.uploadId}
+          fileName={processingJob.fileName}
+          progress={processingJob.progress}
+          progressError={processingJob.progressError}
+        />
+      )}
 
       <DropZone
         onFile={onFile}
@@ -1600,7 +1680,7 @@ function RiskMonitoring({ insights, transactions, loading }) {
       <SectionHeading
         eyebrow="risk_flag distribution"
         title="Risk monitoring"
-        subtitle="Classification counts from the score Lambda, sourced from the risk_flag column."
+        subtitle="Rule-based risk classification produced by the score Lambda."
         right={
           <span className="live-label">
             <StatusDot status="online" />
@@ -2013,7 +2093,71 @@ function App() {
   const [selectedTransaction, setSelectedTransaction] = useState(null)
 
   const [processingJob, setProcessingJob] = useState(null)
-  const [showUploadToast, setShowUploadToast] = useState(false)
+
+  const [toast, setToast] = useState(null)
+
+  const toastTimerRef = useRef(null)
+  const toastQueueRef = useRef([])
+
+  const displayToast = useCallback((notification) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+    }
+
+    setToast(notification)
+
+    toastTimerRef.current = setTimeout(() => {
+      toastTimerRef.current = null
+
+      const next = toastQueueRef.current.shift()
+
+      if (next) {
+        displayToastRef.current(next)
+      } else {
+        setToast(null)
+      }
+    }, 4500)
+  }, [])
+
+  const displayToastRef = useRef(displayToast)
+
+  useEffect(() => {
+    displayToastRef.current = displayToast
+  }, [displayToast])
+
+  const notify = useCallback((title, message, type = 'success') => {
+    toastQueueRef.current = []
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+
+    displayToastRef.current({ title, message, type })
+  }, [])
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+
+    const next = toastQueueRef.current.shift()
+
+    if (next) {
+      displayToastRef.current(next)
+    } else {
+      setToast(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
 
   const ledgerRequestId = useRef(0)
 
@@ -2144,26 +2288,120 @@ function App() {
     loadDashboard()
   }, [loadDashboard])
 
+  /* ----------------------------------------------------------------
+   * CSV Processing — live progress polling
+   * ---------------------------------------------------------------- */
+
   useEffect(() => {
-    if (!processingJob) return
-    if (processingJob.currentStage >= processingJob.totalStages) return
+    if (!processingJob?.uploadId) return
 
-    const timer = setTimeout(() => {
-      setProcessingJob((job) => {
-        if (!job) return job
+    const uploadId = processingJob.uploadId
+    let cancelled = false
+    let timer
+    let previousStages = {}
+    let completionNotified = false
 
-        const next = Math.min(job.currentStage + 1, job.totalStages)
+    async function pollProgress() {
+      try {
+        const result = await apiRequest(
+          `/uploads/${encodeURIComponent(uploadId)}/progress`,
+        )
 
-        return {
-          ...job,
-          currentStage: next,
-          stageProgress: 20 + Math.round(Math.random() * 60),
+        if (cancelled) return
+
+        const progress =
+          result?.progress && typeof result.progress === 'object'
+            ? result.progress
+            : result
+
+        const status = String(progress?.status ?? '').toUpperCase()
+        const currentStages = progress?.stages ?? {}
+
+        const newlyCompleted = PROCESSING_STAGES.filter((stage) => {
+          const current = String(
+            currentStages[stage.apiKey] ?? '',
+          ).toUpperCase()
+
+          const previous = String(
+            previousStages[stage.apiKey] ?? '',
+          ).toUpperCase()
+
+          return current === 'COMPLETED' && previous !== 'COMPLETED'
+        })
+
+        previousStages = { ...currentStages }
+
+        setProcessingJob((job) =>
+          !job || job.uploadId !== uploadId
+            ? job
+            : {
+                ...job,
+                progress,
+                progressError: '',
+              },
+        )
+
+        if (status === 'FAILED') {
+          notify(
+            'Processing failed',
+            progress?.failure_reason ||
+              'The CSV processing workflow failed.',
+            'error',
+          )
+          return
         }
-      })
-    }, 3000)
 
-    return () => clearTimeout(timer)
-  }, [processingJob])
+        if (status === 'COMPLETED') {
+          if (!completionNotified) {
+            completionNotified = true
+
+            notify(
+              'Processing completed',
+              'All six processing stages have completed successfully.',
+              'success',
+            )
+          }
+
+          return
+        }
+
+        // Show the latest completed stage immediately.
+        // No notification queue or waiting behind older toasts.
+        if (newlyCompleted.length > 0) {
+          const latestStage = newlyCompleted[newlyCompleted.length - 1]
+
+          notify(
+            `${latestStage.title} completed`,
+            latestStage.description,
+            'success',
+          )
+        }
+      } catch (err) {
+        if (cancelled) return
+
+        setProcessingJob((job) =>
+          !job || job.uploadId !== uploadId
+            ? job
+            : {
+                ...job,
+                progressError:
+                  err.message || 'Progress request failed.',
+              },
+        )
+      }
+
+      if (!cancelled) {
+        timer = setTimeout(pollProgress, 1000)
+      }
+    }
+
+    pollProgress()
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [processingJob?.uploadId, notify])
 
   async function processFile(file) {
     if (!file) return
@@ -2195,29 +2433,35 @@ function App() {
           ? result.message
           : 'The CSV was accepted for processing.'
 
-      setUploadMessage(`${file.name}: ${serverMessage}`)
+      const uploadId = result?.upload_id || result?.id
 
-      const uploadId =
-        (result && (result.upload_id || result.id)) ||
-        `UP-${new Date()
-          .toISOString()
-          .slice(0, 10)
-          .replace(/-/g, '')}-001`
+      if (!uploadId) {
+        throw new Error(
+          'The API accepted the upload but did not return an upload ID.',
+        )
+      }
+
+      setUploadMessage(`${file.name}: ${serverMessage}`)
 
       setProcessingJob({
         uploadId,
         fileName: file.name,
-        currentStage: 1,
-        totalStages: 6,
-        stageProgress: 20,
-        totalRecords: 0,
-        validRecords: 0,
-        quarantinedRecords: 0,
+        progress: null,
+        progressError: '',
       })
 
-      setShowUploadToast(true)
+      notify(
+        'Upload accepted',
+        'Your CSV file was received. Processing has started.',
+      )
     } catch (err) {
       setUploadMessage(`Upload failed for "${file.name}": ${err.message}`)
+
+      notify(
+        'Upload failed',
+        err.message || 'Unable to upload the CSV file.',
+        'error',
+      )
     } finally {
       setUploading(false)
     }
@@ -2307,8 +2551,6 @@ function App() {
               uploading={uploading}
               uploadMessage={uploadMessage}
               processingJob={processingJob}
-              showUploadToast={showUploadToast}
-              onDismissToast={() => setShowUploadToast(false)}
             />
           )}
 
@@ -2350,6 +2592,8 @@ function App() {
         transaction={selectedTransaction}
         onClose={() => setSelectedTransaction(null)}
       />
+
+      <ToastNotification toast={toast} onDismiss={dismissToast} />
 
       <BackToTop />
     </div>
