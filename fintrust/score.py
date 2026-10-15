@@ -1,4 +1,5 @@
-﻿import json
+﻿
+import json
 import logging
 import os
 import uuid
@@ -11,6 +12,7 @@ import boto3
 from fintrust.db import get_db_connection
 from fintrust.dynamo import (
     mark_transaction_persisted,
+    mark_transaction_scored,
     put_risk_event,
 )
 
@@ -118,7 +120,6 @@ def insert_transaction_if_missing(
     transaction: dict[str, Any],
 ) -> None:
     """Insert a transaction or verify an existing transaction is identical."""
-
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -497,6 +498,7 @@ def process_transaction(
 ) -> dict[str, Any]:
     """Insert, score and persist a transaction idempotently."""
     alert_id = None
+    alert_status = None
 
     with get_db_connection() as conn:
         insert_transaction_if_missing(
@@ -540,8 +542,22 @@ def process_transaction(
                 for reason in risk_reasons
             )
 
-            # Recover an alert if an earlier processing attempt
-            # created the risk event but did not create its alert.
+        else:
+            risk_level = calculated_level
+            risk_reasons = calculated_reasons
+            risk_event_id = None
+
+        # The final risk decision has been determined.
+        # Record scoring independently of persistence.
+        if upload_id:
+            mark_transaction_scored(
+                upload_id=upload_id,
+                transaction_id=str(transaction["transaction_id"]),
+            )
+
+        if existing_event:
+            # Recover an alert if an earlier attempt created the
+            # risk event but did not create its alert.
             if risk_level == "HIGH" and not alert_id:
                 alert_id = create_alert(
                     conn=conn,
@@ -551,9 +567,6 @@ def process_transaction(
                 alert_status = "PENDING"
 
         else:
-            risk_level = calculated_level
-            risk_reasons = calculated_reasons
-
             update_transaction_risk(
                 conn=conn,
                 transaction_id=str(transaction["transaction_id"]),
@@ -566,8 +579,6 @@ def process_transaction(
                 risk_level=risk_level,
                 risk_reasons=risk_reasons,
             )
-
-            alert_status = None
 
             if risk_level == "HIGH":
                 alert_id = create_alert(
@@ -583,8 +594,7 @@ def process_transaction(
             risk_level=risk_level,
         )
 
-    # DynamoDB is written after the PostgreSQL transaction commits.
-    # A retry can recover this write from the existing PostgreSQL event.
+    # Persist the risk event to DynamoDB after PostgreSQL commits.
     put_risk_event(
         account_id=str(transaction["account_id"]),
         transaction_id=str(transaction["transaction_id"]),
@@ -596,15 +606,14 @@ def process_transaction(
         },
     )
 
-    # Record upload persistence only after both PostgreSQL and
-    # DynamoDB writes have succeeded. This happens before alert delivery,
-    # because alert delivery is a separate processing outcome.
+    # Persistence is complete only after both database writes succeed.
     if upload_id:
         mark_transaction_persisted(
             upload_id=upload_id,
             transaction_id=str(transaction["transaction_id"]),
         )
 
+    # Alert delivery is separate from the persistence milestone.
     # Never resend an alert already marked SENT or RESOLVED.
     if (
         risk_level == "HIGH"

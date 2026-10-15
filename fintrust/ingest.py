@@ -417,8 +417,8 @@ def lambda_handler(
                 quarantined_records=invalid_rows,
             )
 
-        # Second phase: queue validated transactions.
-        # Upload IDs allow scoring workers to update the correct upload.
+        # Second phase: queue all validated transactions.
+        # Parquet export is deliberately kept separate.
         processed_files: list[dict[str, Any]] = []
 
         for file_data in file_work:
@@ -443,24 +443,40 @@ def lambda_handler(
                 queued_transactions.append(processed_record)
                 queued_rows += 1
 
-            processed_key = store_processed_parquet(
-                transactions=queued_transactions,
-                source_key=file_data["object_key"],
+            processed_files.append(
+                {
+                    "bucket": file_data["bucket"],
+                    "object_key": file_data["object_key"],
+                    "total_rows": file_data["total_rows"],
+                    "valid_rows": file_data["valid_rows"],
+                    "invalid_rows": file_data["invalid_rows"],
+                    "queued_transactions": queued_transactions,
+                }
             )
 
-            file_result = {
-                "bucket": file_data["bucket"],
-                "object_key": file_data["object_key"],
-                "total_rows": file_data["total_rows"],
-                "valid_rows": file_data["valid_rows"],
-                "invalid_rows": file_data["invalid_rows"],
-                "processed_bucket": (
-                    PROCESSED_BUCKET if processed_key else None
-                ),
-                "processed_key": processed_key,
-            }
+        # Every valid transaction has now been successfully sent to SQS.
+        # Mark queueing complete before exporting Parquet files.
+        if upload_id:
+            dynamo.mark_upload_queued(
+                upload_id=upload_id,
+                queued_records=queued_rows,
+            )
 
-            processed_files.append(file_result)
+        # Third phase: export successfully queued transactions to Parquet.
+        for file_result in processed_files:
+            queued_transactions = file_result.pop(
+                "queued_transactions"
+            )
+
+            processed_key = store_processed_parquet(
+                transactions=queued_transactions,
+                source_key=file_result["object_key"],
+            )
+
+            file_result["processed_bucket"] = (
+                PROCESSED_BUCKET if processed_key else None
+            )
+            file_result["processed_key"] = processed_key
 
             logger.info(
                 json.dumps(
@@ -469,14 +485,6 @@ def lambda_handler(
                         **file_result,
                     }
                 )
-            )
-
-        # Queueing is complete only after every valid transaction
-        # has been successfully sent to SQS.
-        if upload_id:
-            dynamo.mark_upload_queued(
-                upload_id=upload_id,
-                queued_records=queued_rows,
             )
 
         publish_metrics(

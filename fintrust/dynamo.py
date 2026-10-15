@@ -25,17 +25,12 @@ UPLOAD_TRACKING_TABLE_NAME = os.getenv(
 
 dynamodb = boto3.resource("dynamodb")
 
-# Existing risk-events table.
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 
-# Separate table for CSV upload progress.
 upload_tracking_table = dynamodb.Table(
     UPLOAD_TRACKING_TABLE_NAME
 )
 
-# Use a separate low-level client for transactions.
-# The DynamoDB resource client has automatic serialization handlers,
-# which must not be combined with manually serialized AttributeValues.
 _dynamodb_client = boto3.client(
     "dynamodb",
     region_name=dynamodb.meta.client.meta.region_name,
@@ -66,12 +61,10 @@ VALID_STAGE_STATUSES = {
 
 
 def _utc_now() -> str:
-    """Return the current UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _serialize_item(item: dict[str, Any]) -> dict[str, Any]:
-    """Serialize a Python dictionary for low-level DynamoDB operations."""
     return {
         key: _serializer.serialize(value)
         for key, value in item.items()
@@ -81,7 +74,6 @@ def _serialize_item(item: dict[str, Any]) -> dict[str, Any]:
 def _get_upload_summary(
     upload_id: str,
 ) -> dict[str, Any] | None:
-    """Retrieve an upload's summary using a strongly consistent read."""
     response = upload_tracking_table.get_item(
         Key={
             "upload_id": upload_id,
@@ -91,6 +83,13 @@ def _get_upload_summary(
     )
 
     return response.get("Item")
+
+
+def _is_conditional_failure(exc: ClientError) -> bool:
+    return (
+        exc.response.get("Error", {}).get("Code")
+        == "ConditionalCheckFailedException"
+    )
 
 
 # ---------------------------------------------------------------------
@@ -103,7 +102,6 @@ def put_risk_event(
     transaction_timestamp: str,
     risk_event: dict[str, Any],
 ) -> None:
-    """Store a risk event in DynamoDB."""
     item = {
         **risk_event,
         "account_id": account_id,
@@ -118,7 +116,6 @@ def get_risk_event(
     account_id: str,
     transaction_id: str,
 ) -> dict[str, Any] | None:
-    """Retrieve a single risk event using its account and transaction ID."""
     response = table.get_item(
         Key={
             "account_id": account_id,
@@ -132,7 +129,6 @@ def get_risk_event(
 def get_account_risk_events(
     account_id: str,
 ) -> list[dict[str, Any]]:
-    """Retrieve all risk events for an account."""
     items = []
 
     response = table.query(
@@ -161,12 +157,7 @@ def create_upload_tracking(
     bucket: str,
     object_key: str,
 ) -> None:
-    """
-    Create the initial tracking record for a CSV upload.
-
-    The CSV has already been uploaded successfully to S3 when this
-    function is called.
-    """
+    """Create the initial tracking record after the S3 upload succeeds."""
     now = _utc_now()
 
     item = {
@@ -188,6 +179,7 @@ def create_upload_tracking(
         "valid_records": 0,
         "quarantined_records": 0,
         "queued_records": 0,
+        "scored_records": 0,
         "completed_records": 0,
         "created_at": now,
         "updated_at": now,
@@ -206,7 +198,6 @@ def set_upload_execution_arn(
     upload_id: str,
     execution_arn: str,
 ) -> None:
-    """Associate a Step Functions execution with an upload."""
     upload_tracking_table.update_item(
         Key={
             "upload_id": upload_id,
@@ -229,12 +220,6 @@ def set_upload_stage(
     stage: str,
     status: str,
 ) -> None:
-    """
-    Update an individual upload stage.
-
-    Stage keys and statuses are restricted to known values so callers
-    cannot accidentally create inconsistent tracking fields.
-    """
     if stage not in UPLOAD_STAGES:
         raise ValueError(f"Unsupported upload stage: {stage}")
 
@@ -266,16 +251,21 @@ def set_upload_stage(
     )
 
 
-def mark_ingestion_started(
+def mark_workflow_started(
     upload_id: str,
 ) -> None:
-    """Record that the ingestion Lambda has started processing the upload."""
+    """Mark Step Functions as started after start_execution succeeds."""
     set_upload_stage(
         upload_id=upload_id,
         stage="ingestion_started",
         status="COMPLETED",
     )
 
+
+def mark_ingestion_started(
+    upload_id: str,
+) -> None:
+    """Mark validation as active when the ingestion Lambda begins."""
     set_upload_stage(
         upload_id=upload_id,
         stage="validation",
@@ -289,12 +279,7 @@ def set_upload_validation_results(
     valid_records: int,
     quarantined_records: int,
 ) -> None:
-    """
-    Store the final CSV validation counts.
-
-    Queueing remains IN_PROGRESS until ingestion explicitly confirms
-    that all valid records have been sent to SQS.
-    """
+    """Save final validation counts after validation and quarantine finish."""
     if min(total_records, valid_records, quarantined_records) < 0:
         raise ValueError("Upload record counts cannot be negative.")
 
@@ -312,19 +297,21 @@ def set_upload_validation_results(
             "SET total_records = :total, "
             "valid_records = :valid, "
             "quarantined_records = :quarantined, "
-            "#stages.#ingestion_started = :completed, "
             "#stages.#validation = :completed, "
             "#stages.#transactions_queued = :in_progress, "
             "#current_stage = :current_stage, "
             "updated_at = :updated_at"
         ),
-        ConditionExpression="attribute_exists(upload_id)",
+        ConditionExpression=(
+            "attribute_exists(upload_id) "
+            "AND #status <> :failed"
+        ),
         ExpressionAttributeNames={
             "#stages": "stages",
-            "#ingestion_started": "ingestion_started",
             "#validation": "validation",
             "#transactions_queued": "transactions_queued",
             "#current_stage": "current_stage",
+            "#status": "status",
         },
         ExpressionAttributeValues={
             ":total": total_records,
@@ -334,16 +321,24 @@ def set_upload_validation_results(
             ":in_progress": "IN_PROGRESS",
             ":current_stage": "transactions_queued",
             ":updated_at": _utc_now(),
+            ":failed": "FAILED",
         },
     )
 
+
+# ---------------------------------------------------------------------
+# Independent stage completion
+# ---------------------------------------------------------------------
 
 def _complete_upload_if_ready(
     upload_id: str,
 ) -> None:
     """
-    Complete scoring and persistence stages once all valid records
-    have been persisted and queueing has finished.
+    Complete scoring and persistence independently.
+
+    Risk Assessment requires every valid transaction to be scored.
+    Results Saved requires every valid transaction to be persisted.
+    Overall completion requires both stages and completed queueing.
     """
     summary = _get_upload_summary(upload_id)
 
@@ -352,25 +347,97 @@ def _complete_upload_if_ready(
             f"Upload tracking record not found: {upload_id}"
         )
 
-    valid_records = int(summary.get("valid_records", 0))
-    completed_records = int(summary.get("completed_records", 0))
+    if summary.get("status") == "FAILED":
+        return
 
     stages = summary.get("stages", {})
 
-    queueing_completed = (
-        stages.get("transactions_queued") == "COMPLETED"
-    )
-
-    if not queueing_completed:
+    if stages.get("transactions_queued") != "COMPLETED":
         return
+
+    valid_records = int(summary.get("valid_records", 0))
+    scored_records = int(summary.get("scored_records", 0))
+    completed_records = int(summary.get("completed_records", 0))
+
+    # Complete Risk Assessment once every valid transaction is scored.
+    if (
+        scored_records >= valid_records
+        and stages.get("risk_scoring") != "COMPLETED"
+    ):
+        try:
+            upload_tracking_table.update_item(
+                Key={
+                    "upload_id": upload_id,
+                    "record_type": "SUMMARY",
+                },
+                UpdateExpression=(
+                    "SET #stages.#risk_scoring = :completed, "
+                    "#stages.#results_persisted = :in_progress, "
+                    "#current_stage = :current_stage, "
+                    "#updated_at = :updated_at"
+                ),
+                ConditionExpression=(
+                    "#stages.#transactions_queued = :completed "
+                    "AND #scored_records >= #valid_records "
+                    "AND #status <> :failed"
+                ),
+                ExpressionAttributeNames={
+                    "#stages": "stages",
+                    "#risk_scoring": "risk_scoring",
+                    "#results_persisted": "results_persisted",
+                    "#transactions_queued": "transactions_queued",
+                    "#scored_records": "scored_records",
+                    "#valid_records": "valid_records",
+                    "#current_stage": "current_stage",
+                    "#updated_at": "updated_at",
+                    "#status": "status",
+                },
+                ExpressionAttributeValues={
+                    ":completed": "COMPLETED",
+                    ":in_progress": "IN_PROGRESS",
+                    ":current_stage": "results_persisted",
+                    ":failed": "FAILED",
+                    ":updated_at": _utc_now(),
+                },
+            )
+
+        except ClientError as exc:
+            if not _is_conditional_failure(exc):
+                raise
+
+            latest = _get_upload_summary(upload_id)
+
+            if latest and latest.get("status") == "FAILED":
+                return
+
+            if (
+                latest
+                and latest.get("stages", {}).get("risk_scoring")
+                != "COMPLETED"
+            ):
+                raise
+
+    # Re-read because scoring may have just completed.
+    summary = _get_upload_summary(upload_id)
+
+    if summary is None or summary.get("status") == "FAILED":
+        return
+
+    stages = summary.get("stages", {})
+
+    if stages.get("risk_scoring") != "COMPLETED":
+        return
+
+    valid_records = int(summary.get("valid_records", 0))
+    completed_records = int(summary.get("completed_records", 0))
 
     if completed_records < valid_records:
         return
 
-    # Do not turn an explicitly failed upload into a completed upload.
-    if summary.get("status") == "FAILED":
+    if stages.get("results_persisted") == "COMPLETED":
         return
 
+    # Complete Results Saved only after all persistence operations finish.
     try:
         upload_tracking_table.update_item(
             Key={
@@ -378,22 +445,22 @@ def _complete_upload_if_ready(
                 "record_type": "SUMMARY",
             },
             UpdateExpression=(
-                "SET #stages.#risk_scoring = :completed, "
-                "#stages.#results_persisted = :completed, "
+                "SET #stages.#results_persisted = :completed, "
                 "#current_stage = :current_stage, "
                 "#status = :status, "
                 "#updated_at = :updated_at"
             ),
             ConditionExpression=(
                 "#stages.#transactions_queued = :completed "
+                "AND #stages.#risk_scoring = :completed "
                 "AND #completed_records >= #valid_records "
                 "AND #status <> :failed"
             ),
             ExpressionAttributeNames={
                 "#stages": "stages",
+                "#transactions_queued": "transactions_queued",
                 "#risk_scoring": "risk_scoring",
                 "#results_persisted": "results_persisted",
-                "#transactions_queued": "transactions_queued",
                 "#completed_records": "completed_records",
                 "#valid_records": "valid_records",
                 "#current_stage": "current_stage",
@@ -410,31 +477,32 @@ def _complete_upload_if_ready(
         )
 
     except ClientError as exc:
-        error_code = exc.response.get(
-            "Error", {}
-        ).get("Code")
-
-        if error_code != "ConditionalCheckFailedException":
+        if not _is_conditional_failure(exc):
             raise
 
-        # A failure may have been recorded concurrently. Recheck the
-        # summary to distinguish that case from an unexpected condition.
-        latest_summary = _get_upload_summary(upload_id)
+        latest = _get_upload_summary(upload_id)
 
-        if latest_summary and latest_summary.get("status") == "FAILED":
+        if latest and latest.get("status") == "FAILED":
             return
 
-        raise
+        if (
+            latest
+            and latest.get("stages", {}).get("results_persisted")
+            != "COMPLETED"
+            and latest.get("status") != "COMPLETED"
+        ):
+            raise
 
+
+# ---------------------------------------------------------------------
+# Queue tracking
+# ---------------------------------------------------------------------
 
 def mark_upload_queued(
     upload_id: str,
     queued_records: int,
 ) -> None:
-    """
-    Mark queueing as complete after every valid transaction has been
-    successfully sent to SQS.
-    """
+    """Mark queueing complete after SQS accepts every valid transaction."""
     if queued_records < 0:
         raise ValueError("Queued record count cannot be negative.")
 
@@ -451,7 +519,8 @@ def mark_upload_queued(
         ),
         ConditionExpression=(
             "attribute_exists(upload_id) "
-            "AND #valid_records = :queued"
+            "AND #valid_records = :queued "
+            "AND #status <> :failed"
         ),
         ExpressionAttributeNames={
             "#stages": "stages",
@@ -459,6 +528,7 @@ def mark_upload_queued(
             "#current_stage": "current_stage",
             "#updated_at": "updated_at",
             "#valid_records": "valid_records",
+            "#status": "status",
         },
         ExpressionAttributeValues={
             ":queued": queued_records,
@@ -469,13 +539,11 @@ def mark_upload_queued(
                 else "results_persisted"
             ),
             ":updated_at": _utc_now(),
+            ":failed": "FAILED",
         },
     )
 
     if queued_records > 0:
-        # A scoring worker may already have completed all transactions
-        # between the queue-stage update and this update. Never regress
-        # a completed scoring stage back to IN_PROGRESS.
         try:
             upload_tracking_table.update_item(
                 Key={
@@ -489,7 +557,8 @@ def mark_upload_queued(
                 ),
                 ConditionExpression=(
                     "#stages.#transactions_queued = :completed "
-                    "AND #stages.#risk_scoring <> :completed"
+                    "AND #stages.#risk_scoring <> :completed "
+                    "AND #status <> :failed"
                 ),
                 ExpressionAttributeNames={
                     "#stages": "stages",
@@ -497,40 +566,135 @@ def mark_upload_queued(
                     "#transactions_queued": "transactions_queued",
                     "#current_stage": "current_stage",
                     "#updated_at": "updated_at",
+                    "#status": "status",
                 },
                 ExpressionAttributeValues={
                     ":in_progress": "IN_PROGRESS",
                     ":completed": "COMPLETED",
                     ":current_stage": "risk_scoring",
                     ":updated_at": _utc_now(),
+                    ":failed": "FAILED",
                 },
             )
 
         except ClientError as exc:
-            error_code = exc.response.get(
-                "Error", {}
-            ).get("Code")
-
-            if error_code != "ConditionalCheckFailedException":
+            if not _is_conditional_failure(exc):
                 raise
 
     _complete_upload_if_ready(upload_id)
 
+
+# ---------------------------------------------------------------------
+# Transaction scoring tracking
+# ---------------------------------------------------------------------
+
+def mark_transaction_scored(
+    upload_id: str,
+    transaction_id: str,
+) -> bool:
+    """
+    Record a completed risk assessment exactly once.
+
+    The marker and scored_records increment are atomic.
+    """
+    if not upload_id:
+        raise ValueError("upload_id is required.")
+
+    if not transaction_id:
+        raise ValueError("transaction_id is required.")
+
+    now = _utc_now()
+
+    marker = {
+        "upload_id": upload_id,
+        "record_type": f"SCORE#{transaction_id}",
+        "transaction_id": transaction_id,
+        "scored_at": now,
+    }
+
+    try:
+        _dynamodb_client.transact_write_items(
+            TransactItems=[
+                {
+                    "Put": {
+                        "TableName": UPLOAD_TRACKING_TABLE_NAME,
+                        "Item": _serialize_item(marker),
+                        "ConditionExpression": (
+                            "attribute_not_exists(upload_id) "
+                            "AND attribute_not_exists(record_type)"
+                        ),
+                    }
+                },
+                {
+                    "Update": {
+                        "TableName": UPLOAD_TRACKING_TABLE_NAME,
+                        "Key": _serialize_item(
+                            {
+                                "upload_id": upload_id,
+                                "record_type": "SUMMARY",
+                            }
+                        ),
+                        "UpdateExpression": (
+                            "SET updated_at = :updated_at "
+                            "ADD scored_records :one"
+                        ),
+                        "ConditionExpression": (
+                            "attribute_exists(upload_id) "
+                            "AND record_type = :summary "
+                            "AND #status <> :failed"
+                        ),
+                        "ExpressionAttributeNames": {
+                            "#status": "status",
+                        },
+                        "ExpressionAttributeValues": _serialize_item(
+                            {
+                                ":updated_at": now,
+                                ":one": 1,
+                                ":summary": "SUMMARY",
+                                ":failed": "FAILED",
+                            }
+                        ),
+                    }
+                },
+            ]
+        )
+
+    except ClientError as exc:
+        if _is_conditional_failure(exc) or (
+            exc.response.get("Error", {}).get("Code")
+            == "TransactionCanceledException"
+        ):
+            existing_marker = upload_tracking_table.get_item(
+                Key={
+                    "upload_id": upload_id,
+                    "record_type": f"SCORE#{transaction_id}",
+                },
+                ConsistentRead=True,
+            ).get("Item")
+
+            if existing_marker:
+                _complete_upload_if_ready(upload_id)
+                return False
+
+        raise
+
+    _complete_upload_if_ready(upload_id)
+
+    return True
+
+
+# ---------------------------------------------------------------------
+# Transaction persistence tracking
+# ---------------------------------------------------------------------
 
 def mark_transaction_persisted(
     upload_id: str,
     transaction_id: str,
 ) -> bool:
     """
-    Record successful persistence of a transaction in PostgreSQL
-    and DynamoDB.
+    Record successful PostgreSQL and DynamoDB persistence exactly once.
 
-    A conditional marker put and summary counter increment happen
-    atomically. Duplicate SQS deliveries therefore cannot increment
-    completed_records more than once.
-
-    Returns True when a new completion marker was created.
-    Returns False when the transaction was already recorded.
+    The marker and completed_records increment are atomic.
     """
     if not upload_id:
         raise ValueError("upload_id is required.")
@@ -575,13 +739,18 @@ def mark_transaction_persisted(
                         ),
                         "ConditionExpression": (
                             "attribute_exists(upload_id) "
-                            "AND record_type = :summary"
+                            "AND record_type = :summary "
+                            "AND #status <> :failed"
                         ),
+                        "ExpressionAttributeNames": {
+                            "#status": "status",
+                        },
                         "ExpressionAttributeValues": _serialize_item(
                             {
                                 ":updated_at": now,
                                 ":one": 1,
                                 ":summary": "SUMMARY",
+                                ":failed": "FAILED",
                             }
                         ),
                     }
@@ -594,10 +763,10 @@ def mark_transaction_persisted(
             "Error", {}
         ).get("Code")
 
-        if error_code in {
-            "TransactionCanceledException",
-            "ConditionalCheckFailedException",
-        }:
+        if (
+            _is_conditional_failure(exc)
+            or error_code == "TransactionCanceledException"
+        ):
             existing_marker = upload_tracking_table.get_item(
                 Key={
                     "upload_id": upload_id,
@@ -606,11 +775,15 @@ def mark_transaction_persisted(
                 ConsistentRead=True,
             ).get("Item")
 
+            # This transaction was already recorded.
             if existing_marker:
-                # Retry completion checks too. The original transaction
-                # may have committed its marker before a later completion
-                # update failed.
                 _complete_upload_if_ready(upload_id)
+                return False
+
+            # A failed upload must not be completed by a late worker.
+            latest = _get_upload_summary(upload_id)
+
+            if latest and latest.get("status") == "FAILED":
                 return False
 
         raise
@@ -620,11 +793,15 @@ def mark_transaction_persisted(
     return True
 
 
+# ---------------------------------------------------------------------
+# Failure tracking
+# ---------------------------------------------------------------------
+
 def mark_upload_failed(
     upload_id: str,
     failure_reason: str,
 ) -> None:
-    """Mark an upload as failed while preserving its existing stage history."""
+    """Mark an upload as failed while preserving its stage history."""
     upload_tracking_table.update_item(
         Key={
             "upload_id": upload_id,
@@ -648,8 +825,11 @@ def mark_upload_failed(
     )
 
 
+# ---------------------------------------------------------------------
+# Progress retrieval
+# ---------------------------------------------------------------------
+
 def get_upload_tracking(
     upload_id: str,
 ) -> dict[str, Any] | None:
-    """Retrieve the current progress summary for a CSV upload."""
     return _get_upload_summary(upload_id)

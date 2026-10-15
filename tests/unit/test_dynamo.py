@@ -1,4 +1,3 @@
-
 from fintrust import dynamo
 
 
@@ -146,6 +145,7 @@ def test_set_upload_validation_results(aws_resources):
 
     _create_upload(upload_id)
 
+    dynamo.mark_workflow_started(upload_id)
     dynamo.mark_ingestion_started(upload_id)
 
     dynamo.set_upload_validation_results(
@@ -245,15 +245,16 @@ def test_upload_completes_when_all_transactions_are_persisted(aws_resources):
 
     dynamo.mark_upload_queued(upload_id, 3)
 
-    assert dynamo.mark_transaction_persisted(
-        upload_id,
-        "TX-001",
-    ) is True
+    for transaction_id in ("TX-001", "TX-002"):
+        assert dynamo.mark_transaction_scored(
+            upload_id,
+            transaction_id,
+        ) is True
 
-    assert dynamo.mark_transaction_persisted(
-        upload_id,
-        "TX-002",
-    ) is True
+        assert dynamo.mark_transaction_persisted(
+            upload_id,
+            transaction_id,
+        ) is True
 
     intermediate_result = dynamo.get_upload_tracking(upload_id)
 
@@ -261,6 +262,11 @@ def test_upload_completes_when_all_transactions_are_persisted(aws_resources):
     assert intermediate_result["completed_records"] == 2
     assert intermediate_result["status"] == "PROCESSING"
     assert intermediate_result["stages"]["results_persisted"] == "WAITING"
+
+    assert dynamo.mark_transaction_scored(
+        upload_id,
+        "TX-003",
+    ) is True
 
     assert dynamo.mark_transaction_persisted(
         upload_id,
@@ -328,6 +334,11 @@ def test_fast_worker_completion_is_not_regressed(aws_resources, monkeypatch):
 
     # Simulate the scoring worker finishing the transaction before
     # ingestion has finished its queue-completion update.
+    assert dynamo.mark_transaction_scored(
+        upload_id,
+        "TX-001",
+    ) is True
+
     assert dynamo.mark_transaction_persisted(
         upload_id,
         "TX-001",

@@ -1277,7 +1277,7 @@ function TransactionsScreen({
 
   return (
     <>
-      <ProcessingScreen
+     {/* <ProcessingScreen
         uploadId={processingJob?.uploadId ?? 'UP-20261015-001'}
         fileName={processingJob?.fileName ?? 'fintrust_transactions.csv'}
         currentStage={processingJob?.currentStage ?? 3}
@@ -1288,7 +1288,7 @@ function TransactionsScreen({
         quarantinedRecords={processingJob?.quarantinedRecords ?? 5}
         showToast={showUploadToast}
         onDismissToast={onDismissToast}
-      />
+      /> */}
 
       <DropZone
         onFile={onFile}

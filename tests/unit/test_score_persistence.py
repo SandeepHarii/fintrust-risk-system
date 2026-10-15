@@ -63,6 +63,7 @@ def mocked_score_dependencies():
         "insert_postgres_risk_event",
         "create_alert",
         "put_risk_event",
+        "mark_transaction_scored",
         "mark_transaction_persisted",
         "invoke_alert_lambda",
         "update_alert_status",
@@ -181,6 +182,7 @@ def test_new_transaction_persists_risk_event_and_dynamodb(
         },
     )
 
+    mocks["mark_transaction_scored"].assert_not_called()
     mocks["mark_transaction_persisted"].assert_not_called()
 
     mocks["invoke_alert_lambda"].assert_called_once()
@@ -209,6 +211,11 @@ def test_upload_transaction_is_marked_as_persisted(
 
     mocks["put_risk_event"].assert_called_once()
 
+    mocks["mark_transaction_scored"].assert_called_once_with(
+        upload_id="upload-123",
+        transaction_id=transaction["transaction_id"],
+    )
+
     mocks["mark_transaction_persisted"].assert_called_once_with(
         upload_id="upload-123",
         transaction_id=transaction["transaction_id"],
@@ -236,6 +243,7 @@ def test_failed_dynamodb_write_does_not_mark_upload_as_persisted(
             upload_id="upload-123",
         )
 
+    mocks["mark_transaction_scored"].assert_called_once()
     mocks["mark_transaction_persisted"].assert_not_called()
     mocks["invoke_alert_lambda"].assert_not_called()
 

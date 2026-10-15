@@ -246,6 +246,17 @@ async def upload(request: Request) -> Response:
 
         execution_arn = execution["executionArn"]
 
+        # Record that Step Functions has successfully started.
+        try:
+            dynamo.mark_workflow_started(
+                upload_id=upload_id,
+            )
+        except Exception:
+            logger.exception(
+                "Unable to record workflow start for upload_id=%s",
+                upload_id,
+            )
+
         # Store the execution ARN for tracking and troubleshooting.
         try:
             dynamo.set_upload_execution_arn(
