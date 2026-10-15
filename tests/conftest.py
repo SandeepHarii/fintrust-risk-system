@@ -14,6 +14,7 @@ def aws_resources():
     with mock_aws():
         s3 = boto3.client("s3", region_name="eu-north-1")
         dynamodb = boto3.resource("dynamodb", region_name="eu-north-1")
+        dynamodb_client = boto3.client("dynamodb", region_name="eu-north-1")
         cloudwatch = boto3.client("cloudwatch", region_name="eu-north-1")
         sqs = boto3.client("sqs", region_name="eu-north-1")
         ses = boto3.client("ses", region_name="eu-north-1")
@@ -35,6 +36,7 @@ def aws_resources():
         source_bucket = "fintrust-prod-raw-transactions"
         quarantine_bucket = "fintrust-prod-quarantine-transactions"
         dynamodb_table = "fintrust-prod-risk-events"
+        upload_tracking_table_name = dynamo.UPLOAD_TRACKING_TABLE_NAME
         sqs_queue_name = "fintrust-prod-transaction-queue.fifo"
 
         s3.create_bucket(
@@ -64,8 +66,23 @@ def aws_resources():
             BillingMode="PAY_PER_REQUEST",
         )
 
-        # Replace the production DynamoDB table with the Moto table.
+        upload_tracking_table = dynamodb.create_table(
+            TableName=upload_tracking_table_name,
+            KeySchema=[
+                {"AttributeName": "upload_id", "KeyType": "HASH"},
+                {"AttributeName": "record_type", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "upload_id", "AttributeType": "S"},
+                {"AttributeName": "record_type", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+
+        # Replace production DynamoDB resources and low-level client.
         dynamo.table = table
+        dynamo.upload_tracking_table = upload_tracking_table
+        dynamo._dynamodb_client = dynamodb_client
 
         queue = sqs.create_queue(
             QueueName=sqs_queue_name,
@@ -84,9 +101,11 @@ def aws_resources():
             "cloudwatch": cloudwatch,
             "sqs": sqs,
             "table": table,
+            "upload_tracking_table": upload_tracking_table,
             "queue": queue,
             "source_bucket": source_bucket,
             "quarantine_bucket": quarantine_bucket,
             "dynamodb_table": dynamodb_table,
+            "upload_tracking_table_name": upload_tracking_table_name,
             "queue_url": queue["QueueUrl"],
         }

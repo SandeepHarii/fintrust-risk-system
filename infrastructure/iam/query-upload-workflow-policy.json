@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StartUploadWorkflow",
+      "Effect": "Allow",
+      "Action": "states:StartExecution",
+      "Resource": "arn:aws:states:eu-north-1:051084216179:stateMachine:fintrust-prod-upload-workflow"
+    },
+    {
+      "Sid": "ManageUploadTracking",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:GetItem"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-north-1:051084216179:table/fintrust-prod-upload-tracking"
+    }
+  ]
+}

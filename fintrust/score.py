@@ -1,5 +1,4 @@
-﻿
-import json
+﻿import json
 import logging
 import os
 import uuid
@@ -10,7 +9,10 @@ from typing import Any
 import boto3
 
 from fintrust.db import get_db_connection
-from fintrust.dynamo import put_risk_event
+from fintrust.dynamo import (
+    mark_transaction_persisted,
+    put_risk_event,
+)
 
 
 logger = logging.getLogger()
@@ -491,6 +493,7 @@ def invoke_alert_lambda(
 
 def process_transaction(
     transaction: dict[str, Any],
+    upload_id: str | None = None,
 ) -> dict[str, Any]:
     """Insert, score and persist a transaction idempotently."""
     alert_id = None
@@ -593,6 +596,15 @@ def process_transaction(
         },
     )
 
+    # Record upload persistence only after both PostgreSQL and
+    # DynamoDB writes have succeeded. This happens before alert delivery,
+    # because alert delivery is a separate processing outcome.
+    if upload_id:
+        mark_transaction_persisted(
+            upload_id=upload_id,
+            transaction_id=str(transaction["transaction_id"]),
+        )
+
     # Never resend an alert already marked SENT or RESOLVED.
     if (
         risk_level == "HIGH"
@@ -686,9 +698,11 @@ def lambda_handler(
     for record in event.get("Records", []):
         message = json.loads(record["body"])
         transaction = message["transaction"]
+        upload_id = message.get("upload_id")
 
         result = process_transaction(
             transaction=transaction,
+            upload_id=upload_id,
         )
 
         results.append(result)

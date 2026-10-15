@@ -1,0 +1,73 @@
+{
+  "Comment": "FinTrust CSV upload processing workflow",
+  "TimeoutSeconds": 3600,
+  "StartAt": "StartIngestion",
+  "States": {
+    "StartIngestion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:eu-north-1:051084216179:function:fintrust-prod-ingest",
+        "Payload": {
+          "upload_id.$": "$.upload_id",
+          "bucket.$": "$.bucket",
+          "object_key.$": "$.object_key"
+        }
+      },
+      "ResultPath": "$.ingestion_result",
+      "Next": "WaitForProcessing"
+    },
+    "WaitForProcessing": {
+      "Type": "Wait",
+      "Seconds": 10,
+      "Next": "CheckUploadStatus"
+    },
+    "CheckUploadStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:getItem",
+      "Parameters": {
+        "TableName": "fintrust-prod-upload-tracking",
+        "Key": {
+          "upload_id": {
+            "S.$": "$.upload_id"
+          },
+          "record_type": {
+            "S": "SUMMARY"
+          }
+        },
+        "ConsistentRead": true
+      },
+      "ResultPath": "$.tracking",
+      "Next": "EvaluateUploadStatus"
+    },
+    "EvaluateUploadStatus": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.tracking.Item",
+          "IsPresent": false,
+          "Next": "WaitForProcessing"
+        },
+        {
+          "Variable": "$.tracking.Item.status.S",
+          "StringEquals": "COMPLETED",
+          "Next": "UploadCompleted"
+        },
+        {
+          "Variable": "$.tracking.Item.status.S",
+          "StringEquals": "FAILED",
+          "Next": "UploadFailed"
+        }
+      ],
+      "Default": "WaitForProcessing"
+    },
+    "UploadCompleted": {
+      "Type": "Succeed"
+    },
+    "UploadFailed": {
+      "Type": "Fail",
+      "Error": "UploadProcessingFailed",
+      "Cause": "The FinTrust upload processing workflow failed."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:TransactWriteItems"
+      ],
+      "Resource": "arn:aws:dynamodb:eu-north-1:051084216179:table/fintrust-prod-upload-tracking"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
-
+import json
 from contextlib import ExitStack, nullcontext
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -63,6 +63,7 @@ def mocked_score_dependencies():
         "insert_postgres_risk_event",
         "create_alert",
         "put_risk_event",
+        "mark_transaction_persisted",
         "invoke_alert_lambda",
         "update_alert_status",
     ]
@@ -180,6 +181,8 @@ def test_new_transaction_persists_risk_event_and_dynamodb(
         },
     )
 
+    mocks["mark_transaction_persisted"].assert_not_called()
+
     mocks["invoke_alert_lambda"].assert_called_once()
 
     mocks["update_alert_status"].assert_called_once_with(
@@ -191,6 +194,104 @@ def test_new_transaction_persists_risk_event_and_dynamodb(
     assert result["risk_event_id"] == "risk-event-123"
     assert result["alert_id"] == "alert-123"
     assert result["risk_level"] == "HIGH"
+
+
+def test_upload_transaction_is_marked_as_persisted(
+    mocked_score_dependencies,
+):
+    mocks = mocked_score_dependencies
+    transaction = base_transaction()
+
+    result = process_transaction(
+        transaction=transaction,
+        upload_id="upload-123",
+    )
+
+    mocks["put_risk_event"].assert_called_once()
+
+    mocks["mark_transaction_persisted"].assert_called_once_with(
+        upload_id="upload-123",
+        transaction_id=transaction["transaction_id"],
+    )
+
+    assert result["transaction_id"] == transaction["transaction_id"]
+
+
+def test_failed_dynamodb_write_does_not_mark_upload_as_persisted(
+    mocked_score_dependencies,
+):
+    mocks = mocked_score_dependencies
+    transaction = base_transaction()
+
+    mocks["put_risk_event"].side_effect = RuntimeError(
+        "DynamoDB write failed"
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="DynamoDB write failed",
+    ):
+        process_transaction(
+            transaction=transaction,
+            upload_id="upload-123",
+        )
+
+    mocks["mark_transaction_persisted"].assert_not_called()
+    mocks["invoke_alert_lambda"].assert_not_called()
+
+
+def test_upload_persistence_is_recorded_before_alert_delivery(
+    mocked_score_dependencies,
+):
+    mocks = mocked_score_dependencies
+    transaction = base_transaction()
+
+    mocks["invoke_alert_lambda"].side_effect = RuntimeError(
+        "Alert delivery failed"
+    )
+
+    call_order = Mock()
+    call_order.attach_mock(
+        mocks["mark_transaction_persisted"],
+        "persist",
+    )
+    call_order.attach_mock(
+        mocks["invoke_alert_lambda"],
+        "alert",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Alert delivery failed",
+    ):
+        process_transaction(
+            transaction=transaction,
+            upload_id="upload-123",
+        )
+
+    persistence_call = call.persist(
+        upload_id="upload-123",
+        transaction_id=transaction["transaction_id"],
+    )
+
+    alert_call = call.alert(
+        alert_id="alert-123",
+        transaction=transaction,
+        risk_event_id="risk-event-123",
+        risk_level="HIGH",
+        risk_reasons=["HIGH_AMOUNT", "CROSS_BORDER"],
+    )
+
+    assert (
+        call_order.mock_calls.index(persistence_call)
+        < call_order.mock_calls.index(alert_call)
+    )
+
+    mocks["update_alert_status"].assert_called_once_with(
+        conn=mocks["get_db_connection"].return_value.__enter__(),
+        alert_id="alert-123",
+        status="FAILED",
+    )
 
 
 def test_existing_risk_event_with_missing_alert_is_recovered(
@@ -282,3 +383,42 @@ def test_failed_alert_is_retried(
 
     assert result["alert_id"] == "alert-123"
     assert result["risk_level"] == "HIGH"
+
+
+def test_sqs_handler_passes_upload_id_to_transaction_processor():
+    from fintrust import score
+
+    transaction = base_transaction()
+
+    event = {
+        "Records": [
+            {
+                "body": json.dumps(
+                    {
+                        "upload_id": "upload-123",
+                        "transaction": transaction,
+                    }
+                )
+            }
+        ]
+    }
+
+    with patch(
+        "fintrust.score.process_transaction"
+    ) as process_mock:
+        process_mock.return_value = {
+            "transaction_id": transaction["transaction_id"],
+            "risk_level": "HIGH",
+        }
+
+        result = score.lambda_handler(event, None)
+
+    process_mock.assert_called_once_with(
+        transaction=transaction,
+        upload_id="upload-123",
+    )
+
+    response_body = json.loads(result["body"])
+
+    assert result["statusCode"] == 200
+    assert response_body["processed"] == 1

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, Field
 
+from fintrust import dynamo
 from fintrust.db import (
     flag_transaction,
     get_db_connection,
@@ -49,12 +50,17 @@ app.add_middleware(
 
 _s3 = boto3.client("s3")
 _lambda = boto3.client("lambda")
+_stepfunctions = boto3.client("stepfunctions")
 
 RAW_BUCKET = "fintrust-prod-raw-transactions"
 REPORT_BUCKET = "fintrust-prod-reports"
 
-INGEST_FUNCTION_NAME = "fintrust-prod-ingest"
 ALERT_FUNCTION_NAME = "fintrust-prod-alert"
+
+UPLOAD_STATE_MACHINE_ARN = (
+    "arn:aws:states:eu-north-1:051084216179:"
+    "stateMachine:fintrust-prod-upload-workflow"
+)
 
 
 class FlagRequest(BaseModel):
@@ -107,6 +113,7 @@ def insights() -> dict:
     try:
         return get_insights()
     except Exception:
+        logger.exception("Unable to retrieve insights.")
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve insights.",
@@ -127,7 +134,6 @@ def reports() -> dict:
         ):
             for obj in page.get("Contents", []):
                 key = obj["Key"]
-
                 parts = key.split("/")
 
                 # Only include files in monthly/YYYY-MM/ directories.
@@ -182,7 +188,6 @@ def reports() -> dict:
 
     except Exception:
         logger.exception("Unable to retrieve monthly reports.")
-
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve monthly reports.",
@@ -207,9 +212,11 @@ async def upload(request: Request) -> Response:
             detail="Content-Type must be text/csv.",
         )
 
-    object_key = f"uploads/{uuid.uuid4()}.csv"
+    upload_id = str(uuid.uuid4())
+    object_key = f"uploads/{upload_id}.csv"
 
     try:
+        # Store the uploaded CSV in the raw S3 bucket.
         _s3.put_object(
             Bucket=RAW_BUCKET,
             Key=object_key,
@@ -217,43 +224,104 @@ async def upload(request: Request) -> Response:
             ContentType="text/csv",
         )
 
-        s3_event = {
-            "Records": [
-                {
-                    "s3": {
-                        "bucket": {
-                            "name": RAW_BUCKET,
-                        },
-                        "object": {
-                            "key": object_key,
-                        },
-                    }
-                }
-            ]
-        }
-
-        _lambda.invoke(
-            FunctionName=INGEST_FUNCTION_NAME,
-            InvocationType="Event",
-            Payload=json.dumps(s3_event).encode("utf-8"),
+        # Create the upload's tracking record.
+        dynamo.create_upload_tracking(
+            upload_id=upload_id,
+            bucket=RAW_BUCKET,
+            object_key=object_key,
         )
+
+        # Start asynchronous workflow orchestration.
+        execution = _stepfunctions.start_execution(
+            stateMachineArn=UPLOAD_STATE_MACHINE_ARN,
+            name=upload_id,
+            input=json.dumps(
+                {
+                    "upload_id": upload_id,
+                    "bucket": RAW_BUCKET,
+                    "object_key": object_key,
+                }
+            ),
+        )
+
+        execution_arn = execution["executionArn"]
+
+        # Store the execution ARN for tracking and troubleshooting.
+        try:
+            dynamo.set_upload_execution_arn(
+                upload_id=upload_id,
+                execution_arn=execution_arn,
+            )
+        except Exception:
+            # The workflow has already started, so do not report
+            # the upload as failed because this metadata update failed.
+            logger.exception(
+                "Unable to save execution ARN for upload_id=%s",
+                upload_id,
+            )
 
         return Response(
             content=json.dumps(
                 {
                     "message": "CSV upload accepted for asynchronous processing.",
+                    "upload_id": upload_id,
                     "bucket": RAW_BUCKET,
                     "object_key": object_key,
+                    "execution_arn": execution_arn,
+                    "progress_url": f"/uploads/{upload_id}/progress",
                 }
             ),
             status_code=202,
             media_type="application/json",
         )
 
-    except Exception:
+    except Exception as exc:
+        logger.exception(
+            "Unable to start CSV upload workflow for upload_id=%s",
+            upload_id,
+        )
+
+        # Mark the upload as failed if its tracking record exists.
+        try:
+            dynamo.mark_upload_failed(
+                upload_id=upload_id,
+                reason=str(exc),
+            )
+        except Exception:
+            logger.exception(
+                "Unable to mark upload as failed for upload_id=%s",
+                upload_id,
+            )
+
         raise HTTPException(
             status_code=500,
             detail="Unable to accept CSV upload.",
+        ) from exc
+
+
+@app.get("/uploads/{upload_id}/progress")
+def upload_progress(upload_id: str) -> dict:
+    try:
+        tracking = dynamo.get_upload_tracking(upload_id)
+
+        if not tracking:
+            raise HTTPException(
+                status_code=404,
+                detail="Upload tracking record not found.",
+            )
+
+        return tracking
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "Unable to retrieve upload progress for upload_id=%s",
+            upload_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve upload progress.",
         )
 
 
@@ -346,6 +414,7 @@ def resolve(request: ResolveRequest) -> dict:
             detail=str(exc),
         ) from exc
     except Exception:
+        logger.exception("Unable to resolve alert.")
         raise HTTPException(
             status_code=500,
             detail="Unable to resolve alert.",
