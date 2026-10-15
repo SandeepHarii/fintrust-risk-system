@@ -250,6 +250,253 @@ function Empty({ title, body }) {
   )
 }
 
+/* ==================================================================
+ * ==================================================================
+ * ==                                                              ==
+ * ==                  CSV PROCESSING SECTION                      ==
+ * ==                                                              ==
+ * ==================================================================
+ * ================================================================== */
+
+/* ------------------------------------------------------------------
+ * CSV Processing — stage definitions
+ * ------------------------------------------------------------------ */
+
+const PROCESSING_STAGES = [
+  {
+    key: 'received',
+    title: 'File Received',
+    description: 'CSV uploaded to Amazon S3 and assigned an upload ID.',
+  },
+  {
+    key: 'started',
+    title: 'Processing Started',
+    description: 'AWS Step Functions has started the ingestion workflow.',
+  },
+  {
+    key: 'validation',
+    title: 'Data Validation',
+    description:
+      'Records are checked for valid formats, required fields and data quality.',
+  },
+  {
+    key: 'queued',
+    title: 'Transactions Queued',
+    description: 'Valid records are added to Amazon SQS for processing.',
+  },
+  {
+    key: 'risk',
+    title: 'Risk Assessment',
+    description:
+      "Transactions are evaluated against FinTrust's risk detection rules.",
+  },
+  {
+    key: 'saved',
+    title: 'Results Saved',
+    description:
+      'Processed transactions and risk results are saved to the database.',
+  },
+]
+
+/* ------------------------------------------------------------------
+ * CSV Processing — screen component (horizontal stepper)
+ * ------------------------------------------------------------------ */
+
+function ProcessingScreen({
+  uploadId = 'UP-20261015-001',
+  fileName = 'fintrust_transactions.csv',
+  currentStage = 3,
+  totalStages = 6,
+  stageProgress = 65,
+  totalRecords = 250,
+  validRecords = 245,
+  quarantinedRecords = 5,
+  showToast = false,
+  onDismissToast,
+}) {
+  const overallProgress = Math.round((currentStage / totalStages) * 100)
+  const activeStageTitle =
+    PROCESSING_STAGES[currentStage - 1]?.title ?? 'Data Validation'
+
+  function getStageState(index) {
+    const position = index + 1
+    if (position < currentStage) return 'completed'
+    if (position === currentStage) return 'active'
+    return 'pending'
+  }
+
+  function getStageStatusLabel(index) {
+    const state = getStageState(index)
+    if (state === 'completed') return 'Completed'
+    if (state === 'active') return 'In Progress'
+    return 'Pending'
+  }
+
+  return (
+    <div className="upload-preview">
+      {showToast && (
+        <div className="upload-toast" role="status" aria-live="polite">
+          <div className="toast-icon" aria-hidden="true">
+            ✓
+          </div>
+
+          <div className="toast-content">
+            <strong>Upload accepted</strong>
+            <span>Your CSV file was received. Processing has started.</span>
+          </div>
+
+          <button
+            className="toast-close"
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={onDismissToast}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      <section className="content-card upload-card">
+        <div className="section-heading upload-header">
+          <div>
+            <p className="section-eyebrow">TRANSACTION INGESTION</p>
+            <h2>CSV Processing</h2>
+            <p>
+              Your file is being processed through the FinTrust risk
+              monitoring pipeline.
+            </p>
+          </div>
+
+          <span className="upload-status">
+            <StatusDot status="online" />
+            Processing
+          </span>
+        </div>
+
+        <div className="upload-details">
+          <div className="detail-item">
+            <span className="detail-label">UPLOAD ID</span>
+            <strong className="mono">{uploadId}</strong>
+          </div>
+
+          <div className="detail-item">
+            <span className="detail-label">FILE NAME</span>
+            <strong>{fileName}</strong>
+          </div>
+
+          <div className="detail-item">
+            <span className="detail-label">CURRENT STAGE</span>
+            <strong>{activeStageTitle}</strong>
+          </div>
+        </div>
+
+        <div className="upload-progress-section">
+          <div className="progress-heading">
+            <div>
+              <h3>Overall Progress</h3>
+              <p>
+                Stage {currentStage} of {totalStages} completed
+              </p>
+            </div>
+
+            <strong className="progress-percentage">{overallProgress}%</strong>
+          </div>
+
+          <div className="upload-progress">
+            <div
+              className="upload-progress-fill"
+              style={{ width: `${overallProgress}%` }}
+            />
+          </div>
+
+          <div className="progress-footer">
+            <span>Processing your transactions</span>
+            <span>
+              {currentStage} / {totalStages} stages
+            </span>
+          </div>
+        </div>
+
+        {/* Horizontal stepper with descriptions */}
+        <div className="upload-stages-section">
+          <div className="upload-section-heading">
+            <h3>Processing Stages</h3>
+            <span>
+              {currentStage} of {totalStages} completed
+            </span>
+          </div>
+
+          <div className="stepper">
+            {PROCESSING_STAGES.map((stage, index) => {
+              const state = getStageState(index)
+              const position = index + 1
+              const isLast = index === PROCESSING_STAGES.length - 1
+
+              return (
+                <div key={stage.key} className={`stepper-step ${state}`}>
+                  <span className="stepper-status">
+                    {getStageStatusLabel(index)}
+                  </span>
+
+                  <div className="stepper-track">
+                    <div className="stepper-indicator" aria-hidden="true">
+                      {state === 'completed' ? '✓' : position}
+                    </div>
+
+                    {!isLast && <div className="stepper-line" />}
+                  </div>
+
+                  <div className="stepper-copy">
+                    <span className="stepper-title">{stage.title}</span>
+                    <p className="stepper-desc">{stage.description}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="upload-summary-section">
+          <div className="upload-section-heading">
+            <h3>Processing Summary</h3>
+            <span>Current results</span>
+          </div>
+
+          <div className="upload-summary-grid">
+            <div className="upload-summary-item">
+              <span>TOTAL RECORDS</span>
+              <strong>{formatNumber(totalRecords)}</strong>
+            </div>
+
+            <div className="upload-summary-item valid">
+              <span>VALID RECORDS</span>
+              <strong>{formatNumber(validRecords)}</strong>
+            </div>
+
+            <div className="upload-summary-item quarantined">
+              <span>QUARANTINED</span>
+              <strong>{formatNumber(quarantinedRecords)}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="upload-card-footer">
+          <div className="refresh-indicator">
+            <StatusDot status="online" />
+            Automatically refreshing status
+          </div>
+
+          <span>FinTrust Transaction Monitoring</span>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+/* ==================================================================
+ * ==               END OF CSV PROCESSING SECTION                  ==
+ * ================================================================== */
+
 /* ------------------------------------------------------------------
  * Drop zone
  * ------------------------------------------------------------------ */
@@ -490,7 +737,11 @@ function DetailDrawer({ transaction, onClose }) {
           </dl>
 
           <div className="drawer-actions">
-            <button className="secondary-button" type="button" onClick={onClose}>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onClose}
+            >
               Close
             </button>
 
@@ -970,6 +1221,9 @@ function TransactionsScreen({
   onFile,
   uploading,
   uploadMessage,
+  processingJob,
+  showUploadToast,
+  onDismissToast,
 }) {
   const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState('All')
@@ -1023,6 +1277,19 @@ function TransactionsScreen({
 
   return (
     <>
+      <ProcessingScreen
+        uploadId={processingJob?.uploadId ?? 'UP-20261015-001'}
+        fileName={processingJob?.fileName ?? 'fintrust_transactions.csv'}
+        currentStage={processingJob?.currentStage ?? 3}
+        totalStages={processingJob?.totalStages ?? 6}
+        stageProgress={processingJob?.stageProgress ?? 65}
+        totalRecords={processingJob?.totalRecords ?? 250}
+        validRecords={processingJob?.validRecords ?? 245}
+        quarantinedRecords={processingJob?.quarantinedRecords ?? 5}
+        showToast={showUploadToast}
+        onDismissToast={onDismissToast}
+      />
+
       <DropZone
         onFile={onFile}
         uploading={uploading}
@@ -1144,9 +1411,13 @@ function TransactionsScreen({
                 <th scope="col">Risk</th>
                 <th scope="col">Transaction</th>
                 <th scope="col">Account</th>
-                <th scope="col" className="right">Amount</th>
+                <th scope="col" className="right">
+                  Amount
+                </th>
                 <th scope="col">Flag</th>
-                <th scope="col" className="right">Date</th>
+                <th scope="col" className="right">
+                  Date
+                </th>
               </tr>
             </thead>
 
@@ -1391,8 +1662,6 @@ function ReportsScreen({ transactions, insights, loading }) {
   const [reportsError, setReportsError] = useState('')
   const [refreshVersion, setRefreshVersion] = useState(0)
 
-  // This component mounts only when the Reports page is active.
-  // Fetch the actual monthly reports from the backend.
   useEffect(() => {
     let cancelled = false
 
@@ -1405,16 +1674,12 @@ function ReportsScreen({ transactions, insights, loading }) {
 
         if (cancelled) return
 
-        setReports(
-          Array.isArray(result?.reports) ? result.reports : [],
-        )
+        setReports(Array.isArray(result?.reports) ? result.reports : [])
       } catch (err) {
         if (cancelled) return
 
         setReports([])
-        setReportsError(
-          err.message || 'Unable to retrieve monthly reports.',
-        )
+        setReportsError(err.message || 'Unable to retrieve monthly reports.')
       } finally {
         if (!cancelled) {
           setReportsLoading(false)
@@ -1429,9 +1694,6 @@ function ReportsScreen({ transactions, insights, loading }) {
     }
   }, [refreshVersion])
 
-  // Use /insights for full-ledger transaction and risk counts.
-  // Keep ledger value and country calculations based on the existing
-  // dashboard records, matching the calculations used by Overview.
   const summary = useMemo(() => {
     const loadedRisk = { high: 0, medium: 0, low: 0 }
     const byCountry = new Map()
@@ -1449,21 +1711,16 @@ function ReportsScreen({ transactions, insights, loading }) {
 
       const country = t.source_country ?? 'Unknown'
 
-      byCountry.set(
-        country,
-        (byCountry.get(country) ?? 0) + amount,
-      )
+      byCountry.set(country, (byCountry.get(country) ?? 0) + amount)
     })
 
     const insightTx =
-      insights?.transactions &&
-      typeof insights.transactions === 'object'
+      insights?.transactions && typeof insights.transactions === 'object'
         ? insights.transactions
         : {}
 
     return {
-      totalTransactions:
-        toNumber(insightTx.total) ?? transactions.length,
+      totalTransactions: toNumber(insightTx.total) ?? transactions.length,
 
       byRisk: {
         high: toNumber(insightTx.high) ?? loadedRisk.high,
@@ -1480,21 +1737,14 @@ function ReportsScreen({ transactions, insights, loading }) {
     }
   }, [transactions, insights])
 
-  const reportingPeriods = new Set(
-    reports.map((report) => report.period),
-  ).size
+  const reportingPeriods = new Set(reports.map((report) => report.period)).size
 
-  const csvCount = reports.filter(
-    (report) => report.format === 'CSV',
-  ).length
+  const csvCount = reports.filter((report) => report.format === 'CSV').length
 
-  const jsonCount = reports.filter(
-    (report) => report.format === 'JSON',
-  ).length
+  const jsonCount = reports.filter((report) => report.format === 'JSON').length
 
   return (
     <>
-      {/* Actual monthly reports stored in S3 */}
       <section className="content-card">
         <SectionHeading
           eyebrow="S3 · MONTHLY REPORT ARCHIVE"
@@ -1574,8 +1824,12 @@ function ReportsScreen({ transactions, insights, loading }) {
                     <th scope="col">Report file</th>
                     <th scope="col">Format</th>
                     <th scope="col">Last modified</th>
-                    <th scope="col" className="right">File size</th>
-                    <th scope="col" className="right">Download</th>
+                    <th scope="col" className="right">
+                      File size
+                    </th>
+                    <th scope="col" className="right">
+                      Download
+                    </th>
                   </tr>
                 </thead>
 
@@ -1583,21 +1837,15 @@ function ReportsScreen({ transactions, insights, loading }) {
                   {reports.map((report) => (
                     <tr key={report.key}>
                       <td>
-                        <strong>
-                          {formatReportMonth(report.period)}
-                        </strong>
+                        <strong>{formatReportMonth(report.period)}</strong>
                       </td>
 
                       <td>
-                        <span className="mono">
-                          {report.filename}
-                        </span>
+                        <span className="mono">{report.filename}</span>
                       </td>
 
                       <td>
-                        <span className="flag-pill">
-                          {report.format}
-                        </span>
+                        <span className="flag-pill">{report.format}</span>
                       </td>
 
                       <td className="muted">
@@ -1620,9 +1868,7 @@ function ReportsScreen({ transactions, insights, loading }) {
                             ↓ Download
                           </a>
                         ) : (
-                          <span className="muted">
-                            Unavailable
-                          </span>
+                          <span className="muted">Unavailable</span>
                         )}
                       </td>
                     </tr>
@@ -1632,14 +1878,13 @@ function ReportsScreen({ transactions, insights, loading }) {
             </div>
 
             <p className="demo-notice">
-              Download links are pre-signed S3 URLs and expire after
-              15 minutes. Refresh the reports list to generate fresh links.
+              Download links are pre-signed S3 URLs and expire after 15
+              minutes. Refresh the reports list to generate fresh links.
             </p>
           </>
         )}
       </section>
 
-      {/* Live insights from the dashboard and /insights endpoint */}
       <section className="content-card">
         <SectionHeading
           eyebrow="LIVE TRANSACTION DATA"
@@ -1705,9 +1950,7 @@ function ReportsScreen({ transactions, insights, loading }) {
 
                   return (
                     <li key={row.country}>
-                      <span className="hlabel mono">
-                        {row.country}
-                      </span>
+                      <span className="hlabel mono">{row.country}</span>
 
                       <span className="htrack">
                         <span
@@ -1732,10 +1975,10 @@ function ReportsScreen({ transactions, insights, loading }) {
         )}
 
         <p className="demo-notice">
-          Transaction and risk counts come from the /insights endpoint.
-          Ledger value and country breakdown use the dashboard's currently
-          loaded records, so they are not full-ledger monetary aggregates.
-          The complete monthly report is generated separately by report.py.
+          Transaction and risk counts come from the /insights endpoint. Ledger
+          value and country breakdown use the dashboard's currently loaded
+          records, so they are not full-ledger monetary aggregates. The
+          complete monthly report is generated separately by report.py.
         </p>
       </section>
     </>
@@ -1749,11 +1992,9 @@ function ReportsScreen({ transactions, insights, loading }) {
 function App() {
   const [activePage, setActivePage] = useState('overview')
 
-  // Existing dashboard data used by Overview, Risk and Reports.
   const [transactions, setTransactions] = useState([])
   const [insights, setInsights] = useState(null)
 
-  // Separate server-paginated data used only by the transaction ledger.
   const [ledgerTransactions, setLedgerTransactions] = useState([])
   const [ledgerPagination, setLedgerPagination] = useState({
     page: 1,
@@ -1771,17 +2012,17 @@ function App() {
   const [uploading, setUploading] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState(null)
 
-  // Prevent older ledger requests from replacing newer filter results.
+  const [processingJob, setProcessingJob] = useState(null)
+  const [showUploadToast, setShowUploadToast] = useState(false)
+
   const ledgerRequestId = useRef(0)
 
-  // The presentation-ready UI is the default.
   const [theme, setTheme] = useState('new')
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === 'new' ? 'classic' : 'new'))
   }, [])
 
-  // Apply the selected theme to the document so the page background changes too.
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     document.body.dataset.theme = theme
@@ -1792,7 +2033,6 @@ function App() {
     }
   }, [theme])
 
-  // Fetch one page of filtered ledger records from the backend.
   const fetchLedger = useCallback(
     async ({
       page = 1,
@@ -1823,11 +2063,8 @@ function App() {
           params.set('flag_filter', flagFilter)
         }
 
-        const result = await apiRequest(
-          `/transactions?${params.toString()}`,
-        )
+        const result = await apiRequest(`/transactions?${params.toString()}`)
 
-        // Ignore stale responses if a newer request has already started.
         if (requestId !== ledgerRequestId.current) return
 
         const rows = getArray(result)
@@ -1874,7 +2111,6 @@ function App() {
     [],
   )
 
-  // Existing dashboard fetch remains separate from ledger pagination.
   const loadDashboard = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -1908,6 +2144,27 @@ function App() {
     loadDashboard()
   }, [loadDashboard])
 
+  useEffect(() => {
+    if (!processingJob) return
+    if (processingJob.currentStage >= processingJob.totalStages) return
+
+    const timer = setTimeout(() => {
+      setProcessingJob((job) => {
+        if (!job) return job
+
+        const next = Math.min(job.currentStage + 1, job.totalStages)
+
+        return {
+          ...job,
+          currentStage: next,
+          stageProgress: 20 + Math.round(Math.random() * 60),
+        }
+      })
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [processingJob])
+
   async function processFile(file) {
     if (!file) return
 
@@ -1938,9 +2195,27 @@ function App() {
           ? result.message
           : 'The CSV was accepted for processing.'
 
-      setUploadMessage(
-        `${file.name}: ${serverMessage} Processing is asynchronous — refresh after ingestion completes to load the new records.`,
-      )
+      setUploadMessage(`${file.name}: ${serverMessage}`)
+
+      const uploadId =
+        (result && (result.upload_id || result.id)) ||
+        `UP-${new Date()
+          .toISOString()
+          .slice(0, 10)
+          .replace(/-/g, '')}-001`
+
+      setProcessingJob({
+        uploadId,
+        fileName: file.name,
+        currentStage: 1,
+        totalStages: 6,
+        stageProgress: 20,
+        totalRecords: 0,
+        validRecords: 0,
+        quarantinedRecords: 0,
+      })
+
+      setShowUploadToast(true)
     } catch (err) {
       setUploadMessage(`Upload failed for "${file.name}": ${err.message}`)
     } finally {
@@ -2031,6 +2306,9 @@ function App() {
               onFile={processFile}
               uploading={uploading}
               uploadMessage={uploadMessage}
+              processingJob={processingJob}
+              showUploadToast={showUploadToast}
+              onDismissToast={() => setShowUploadToast(false)}
             />
           )}
 

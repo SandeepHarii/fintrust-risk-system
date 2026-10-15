@@ -46,43 +46,57 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Classic light theme
+ * Classic light theme — brand palette
+ * Primary Blue   #0A60A8
+ * Corporate Navy #1B2E4B
+ * Sky Blue       #00A4E4
+ * Orange Accent  #FF6B00
+ * Slate Grey     #F4F6F9
+ * Pure White     #FFFFFF
  * ------------------------------------------------------------------ */
 
 :root[data-theme='classic'] {
   color-scheme: light;
 
-  --background: #f5f7fa;
-  --background-soft: #eef2f7;
-  --surface: #ffffff;
+  /* Surfaces */
+  --background: #f4f6f9;          /* Light Slate Grey canvas */
+  --background-soft: #f4f6f9;     /* panels / table headers */
+  --surface: #ffffff;             /* Pure White cards */
   --surface-raised: #ffffff;
-  --surface-hover: #f6f9fc;
-  --sidebar: #1b2e4b;
+  --surface-hover: #f4f6f9;       /* row hover */
+  --sidebar: #1b2e4b;             /* Deep Corporate Navy */
   --topbar: #ffffff;
-  --border: #e5eaf0;
-  --border-strong: #cbd5e1;
+  --border: #e2e8f0;              /* subtle slate border */
+  --border-strong: #c8d3e0;
 
-  --text: #1b2e4b;
-  --text-secondary: #334e68;
-  --muted: #718096;
-  --subtle: #96a2b2;
+  /* Text */
+  --text: #1b2e4b;                /* Deep Corporate Navy */
+  --text-secondary: #33465f;      /* softened navy */
+  --muted: #64748b;               /* slate grey */
+  --subtle: #94a3b8;
 
-  --primary: #0a60a8;
-  --primary-hover: #087cbd;
+  /* Brand / interactive */
+  --primary: #0a60a8;             /* Primary Brand Blue */
+  --primary-hover: #00a4e4;       /* Sky Blue on hover */
   --primary-soft: rgb(10 96 168 / 9%);
-  --teal: #15977e;
+  --teal: #0a60a8;                /* brand-consistent accent */
 
-  --risk-high: #d94e4e;
-  --risk-high-bg: #fff3f2;
-  --risk-high-border: #f7d9d7;
+  /* CTA / alert accent */
+  --accent-cta: #ff6b00;
+  --accent-cta-hover: #e55f00;
+
+  /* Risk states — brand-tuned for white backgrounds */
+  --risk-high: #c93a3a;
+  --risk-high-bg: #fdf2f2;
+  --risk-high-border: #f3d2d2;
   --risk-medium: #a9761c;
   --risk-medium-bg: #fff9ed;
   --risk-medium-border: #f2e1bd;
-  --risk-low: #198466;
+  --risk-low: #0e7a5f;
   --risk-low-bg: #f0faf5;
   --risk-low-border: #d6eee3;
-  --risk-none: #6b7a8d;
-  --risk-none-bg: #f4f6fa;
+  --risk-none: #64748b;
+  --risk-none-bg: #f4f6f9;
   --risk-none-border: #d5dae1;
 }
 
@@ -1687,6 +1701,516 @@ td:first-child strong {
   font-size: 11px;
 }
 
+/* ================================================================== *
+ * ================================================================== *
+ * ==                                                              ==
+ * ==                  CSV PROCESSING SECTION                      ==
+ * ==                                                              ==
+ * ==   Styles for the ProcessingScreen component rendered on the  ==
+ * ==   Transactions page, between the page heading and the        ==
+ * ==   upload drop zone. Self-contained block — safe to edit      ==
+ * ==   or remove without affecting other sections.                ==
+ * ==                                                              ==
+ * ================================================================== *
+ * ================================================================== */
+
+.upload-preview {
+  max-width: 1100px;
+  margin-bottom: 22px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Notification toast
+ * ------------------------------------------------------------------ */
+
+.upload-toast {
+  display: flex;
+  width: fit-content;
+  max-width: 430px;
+  align-items: center;
+  gap: 13px;
+  margin: 0 0 20px auto;
+  padding: 15px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 8px 25px rgb(0 0 0 / 12%);
+}
+
+.toast-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--risk-low-bg);
+  color: var(--risk-low);
+  font-weight: 700;
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-content strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.toast-content span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.toast-close {
+  align-self: flex-start;
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------ *
+ * Main processing card
+ * ------------------------------------------------------------------ */
+
+.upload-card {
+  padding: 0 23px;
+}
+
+.upload-header {
+  align-items: flex-start;
+}
+
+.upload-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.upload-header > div > p:last-child {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.upload-status {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid var(--primary);
+  border-radius: 20px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ *
+ * Upload details
+ * ------------------------------------------------------------------ */
+
+.upload-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 27px;
+  padding: 17px 18px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background-soft);
+}
+
+.detail-item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.detail-label {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.detail-item strong {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ *
+ * Overall progress
+ * ------------------------------------------------------------------ */
+
+.upload-progress-section {
+  margin-bottom: 30px;
+}
+
+.progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.progress-heading h3,
+.upload-section-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.progress-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.progress-percentage {
+  color: var(--primary);
+  font-family: 'Manrope', sans-serif;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.upload-progress {
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--background-soft);
+}
+
+.upload-progress-fill {
+  height: 100%;
+  border-radius: 20px;
+  background: linear-gradient(90deg, var(--primary), var(--teal));
+  transition: width 280ms ease;
+}
+
+.progress-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Processing stages — horizontal stepper with descriptions
+ * ------------------------------------------------------------------ */
+
+.upload-stages-section {
+  margin-bottom: 28px;
+}
+
+.upload-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.upload-section-heading > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.stepper {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: 4px 0 4px;
+}
+
+.stepper-step {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+
+.stepper-status {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.stepper-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.stepper-indicator {
+  z-index: 1;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--background-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    background-color 280ms ease,
+    border-color 280ms ease,
+    color 280ms ease;
+}
+
+.stepper-line {
+  flex: 1;
+  height: 2px;
+  margin: 0 6px 0 0;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.stepper-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 12px;
+  text-align: left;
+}
+
+.stepper-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.stepper-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.stepper-step.completed .stepper-status {
+  color: var(--risk-low);
+}
+
+.stepper-step.completed .stepper-indicator {
+  border-color: var(--risk-low-border);
+  background: var(--risk-low-bg);
+  color: var(--risk-low);
+  font-size: 14px;
+}
+
+.stepper-step.completed .stepper-line {
+  background: var(--risk-low-border);
+}
+
+.stepper-step.active .stepper-status {
+  color: var(--primary);
+}
+
+.stepper-step.active .stepper-indicator {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: 0 0 0 4px rgb(39 184 232 / 10%);
+}
+
+.stepper-step.active .stepper-title {
+  color: var(--primary);
+}
+
+.stepper-step.pending .stepper-indicator {
+  opacity: 0.6;
+}
+
+.stepper-step.pending .stepper-copy {
+  opacity: 0.7;
+}
+
+/* ------------------------------------------------------------------ *
+ * Processing summary
+ * ------------------------------------------------------------------ */
+
+.upload-summary-section {
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.upload-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.upload-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background-soft);
+}
+
+.upload-summary-item span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+
+.upload-summary-item strong {
+  color: var(--text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.upload-summary-item.valid strong {
+  color: var(--risk-low);
+}
+
+.upload-summary-item.quarantined strong {
+  color: var(--risk-medium);
+}
+
+/* ------------------------------------------------------------------ *
+ * Upload card footer
+ * ------------------------------------------------------------------ */
+
+.upload-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+
+.refresh-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.upload-card-footer > span {
+  color: var(--subtle);
+  font-size: 9px;
+}
+
+/* ------------------------------------------------------------------ *
+ * CSV Processing — responsive
+ * ------------------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+  .stepper {
+    flex-wrap: wrap;
+    gap: 20px 0;
+  }
+
+  .stepper-step {
+    flex: 0 0 33.3333%;
+    max-width: 33.3333%;
+    padding-right: 12px;
+  }
+
+  .stepper-line {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .upload-preview {
+    padding: 0;
+  }
+
+  .upload-card {
+    padding: 0 15px;
+  }
+
+  .upload-header {
+    flex-direction: column;
+  }
+
+  .upload-details {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .upload-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .upload-card-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .upload-toast {
+    width: 100%;
+    max-width: none;
+  }
+
+  .stepper-step {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+}
+
+@media (max-width: 560px) {
+  .stepper-step {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+/* ================================================================== *
+ * ==                                                              ==
+ * ==               END OF CSV PROCESSING SECTION                  ==
+ * ==                                                              ==
+ * ================================================================== *
+ * ================================================================== */
+
 /* ------------------------------------------------------------------ *
  * Detail drawer
  * ------------------------------------------------------------------ */
@@ -1883,21 +2407,140 @@ td:first-child strong {
  * ------------------------------------------------------------------ */
 
 :root[data-theme='classic'] .topbar {
-  box-shadow: none;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 0 rgb(10 96 168 / 6%);
+}
+
+:root[data-theme='classic'] .page-heading {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgb(10 96 168 / 12%);
+}
+
+:root[data-theme='classic'] .eyebrow,
+:root[data-theme='classic'] .section-eyebrow {
+  color: #0a60a8;
 }
 
 :root[data-theme='classic'] .summary-card,
 :root[data-theme='classic'] .content-card {
-  box-shadow: 0 3px 12px rgb(26 54 93 / 4%);
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 2px rgb(27 46 75 / 4%),
+              0 4px 14px rgb(27 46 75 / 5%);
+}
+
+:root[data-theme='classic'] .summary-card:hover {
+  border-color: rgb(10 96 168 / 30%);
+  box-shadow: 0 2px 4px rgb(27 46 75 / 6%),
+              0 10px 26px rgb(27 46 75 / 8%);
+}
+
+:root[data-theme='classic'] thead {
+  background: #f4f6f9;
+}
+
+:root[data-theme='classic'] th {
+  color: #33465f;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+:root[data-theme='classic'] tbody tr:hover {
+  background: #f4f6f9;
+}
+
+:root[data-theme='classic'] .summary-icon.blue {
+  background: rgb(10 96 168 / 10%);
+  color: #0a60a8;
 }
 
 :root[data-theme='classic'] .primary-button {
   color: #ffffff;
   background: #0a60a8;
+  box-shadow: 0 2px 6px rgb(10 96 168 / 22%);
 }
 
 :root[data-theme='classic'] .primary-button:hover:not(:disabled) {
-  background: #1b2e4b;
+  background: #00a4e4;
+  box-shadow: 0 6px 16px rgb(0 164 228 / 28%);
+}
+
+:root[data-theme='classic'] .secondary-button:hover:not(:disabled) {
+  border-color: #0a60a8;
+  background: rgb(10 96 168 / 6%);
+  color: #0a60a8;
+}
+
+:root[data-theme='classic'] .refresh-button:hover:not(:disabled),
+:root[data-theme='classic'] .theme-toggle:hover {
+  border-color: #0a60a8;
+  background: rgb(10 96 168 / 8%);
+  color: #0a60a8;
+}
+
+:root[data-theme='classic'] .chip.active {
+  border-color: #0a60a8;
+  background: #0a60a8;
+  color: #ffffff;
+}
+
+:root[data-theme='classic'] .flag-pill {
+  border-color: rgb(10 96 168 / 22%);
+  background: rgb(0 164 228 / 8%);
+  color: #0a60a8;
+}
+
+:root[data-theme='classic'] .search-input:focus {
+  border-color: #00a4e4;
+  box-shadow: 0 0 0 3px rgb(0 164 228 / 15%);
+}
+
+:root[data-theme='classic'] .upload-progress-fill {
+  background: linear-gradient(90deg, #0a60a8, #00a4e4);
+}
+
+:root[data-theme='classic'] .bar-fill,
+:root[data-theme='classic'] .hfill {
+  background: linear-gradient(180deg, #00a4e4, #0a60a8);
+}
+
+:root[data-theme='classic'] .hfill.green {
+  background: linear-gradient(90deg, #0e7a5f, #0a60a8);
+}
+
+:root[data-theme='classic'] .environment {
+  border-color: #d6eee3;
+  background: #f0faf5;
+  color: #0e7a5f;
+}
+
+:root[data-theme='classic'] .primary-button.cta,
+:root[data-theme='classic'] .clear-button:hover:not(:disabled) {
+  background: #ff6b00;
+  border-color: #ff6b00;
+  color: #ffffff;
+}
+
+:root[data-theme='classic'] .primary-button.cta:hover:not(:disabled) {
+  background: #e55f00;
+  border-color: #e55f00;
+}
+
+:root[data-theme='classic'] .drawer {
+  box-shadow: -20px 0 40px rgb(27 46 75 / 12%);
+}
+
+:root[data-theme='classic'] .upload-toast {
+  box-shadow: 0 6px 20px rgb(27 46 75 / 10%);
+}
+
+:root[data-theme='classic'] .back-to-top {
+  background: #0a60a8;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgb(10 96 168 / 30%);
+}
+
+:root[data-theme='classic'] .back-to-top:hover {
+  background: #00a4e4;
 }
 
 :root[data-theme='classic'] .theme-toggle.is-new .theme-toggle-thumb {
@@ -1905,7 +2548,7 @@ td:first-child strong {
 }
 
 :root[data-theme='classic'] .theme-toggle.is-classic .theme-toggle-thumb {
-  background: #718096;
+  background: #00a4e4;
 }
 
 /* ------------------------------------------------------------------ *
