@@ -1,14 +1,15 @@
-﻿from pathlib import Path
+﻿
+from pathlib import Path
 from shutil import copy2, copytree, rmtree
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path.cwd()
+
 BUILD_SOURCE = ROOT / "score-build"
-SOURCE_PACKAGE = ROOT / "fintrust"
+SOURCE_PACKAGE = ROOT / "backend" / "fintrust"
 STAGING = ROOT / "score-package"
 OUTPUT_ZIP = ROOT / "fintrust-prod-score-candidate.zip"
 
-# Runtime dependencies already built for Lambda's Python 3.13 x86_64 runtime.
 DEPENDENCY_DIRS = [
     "boto3",
     "botocore",
@@ -33,6 +34,7 @@ METADATA_DIRS = [
 
 IGNORE = {"__pycache__", "*.pyc", "*.pyo", "tests", "test"}
 
+
 def copy_package(source: Path, destination: Path) -> None:
     copytree(
         source,
@@ -46,17 +48,15 @@ def copy_package(source: Path, destination: Path) -> None:
 
 
 if not SOURCE_PACKAGE.is_dir():
-    raise SystemExit("ERROR: fintrust source directory not found.")
+    raise SystemExit("ERROR: backend/fintrust source directory not found.")
 
 if not BUILD_SOURCE.is_dir():
     raise SystemExit("ERROR: score-build directory not found.")
 
-# Verify that all required dependency directories exist before building.
 for name in DEPENDENCY_DIRS + METADATA_DIRS:
     if not (BUILD_SOURCE / name).is_dir():
         raise SystemExit(f"ERROR: Required build dependency missing: {name}")
 
-# Confirm that the PostgreSQL native extension is present.
 native_extensions = list(
     (BUILD_SOURCE / "psycopg2").glob("_psycopg*.so")
 )
@@ -64,26 +64,21 @@ native_extensions = list(
 if not native_extensions:
     raise SystemExit("ERROR: Linux psycopg2 native extension not found.")
 
-# Build in a separate staging directory.
 if STAGING.exists():
     rmtree(STAGING)
 
 STAGING.mkdir()
 
-# Copy the current application source.
 copy_package(SOURCE_PACKAGE, STAGING / "fintrust")
 
-# Copy the existing Linux-compatible dependencies.
 for name in DEPENDENCY_DIRS:
     copy_package(BUILD_SOURCE / name, STAGING / name)
 
-# Retain package metadata.
 for name in METADATA_DIRS:
     copy_package(BUILD_SOURCE / name, STAGING / name)
 
 copy2(BUILD_SOURCE / "six.py", STAGING / "six.py")
 
-# Create a fresh candidate ZIP.
 if OUTPUT_ZIP.exists():
     OUTPUT_ZIP.unlink()
 
@@ -92,7 +87,6 @@ with ZipFile(OUTPUT_ZIP, "w", ZIP_DEFLATED, compresslevel=6) as archive:
         if path.is_file():
             archive.write(path, path.relative_to(STAGING).as_posix())
 
-# Verify ZIP integrity and required files.
 with ZipFile(OUTPUT_ZIP, "r") as archive:
     names = set(archive.namelist())
 
@@ -137,7 +131,6 @@ with ZipFile(OUTPUT_ZIP, "r") as archive:
             + "\n".join(unwanted[:20])
         )
 
-    # Verify that the ZIP contains the exact current source files.
     for filename in ["score.py", "dynamo.py"]:
         source_bytes = (SOURCE_PACKAGE / filename).read_bytes()
         packaged_bytes = archive.read(f"fintrust/{filename}")

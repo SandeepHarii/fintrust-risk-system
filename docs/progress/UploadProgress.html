@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinTrust | CSV Processing</title>
+
+  <link rel="stylesheet" href="UploadProgress.css">
+</head>
+
+<body>
+  <main class="dashboard-content upload-preview">
+
+    <!-- Notification -->
+    <div class="upload-toast">
+      <div class="toast-icon">✓</div>
+      <div class="toast-content">
+        <strong>Upload accepted</strong>
+        <span>Your CSV file was received. Processing has started.</span>
+      </div>
+      <button class="toast-close" aria-label="Dismiss notification">×</button>
+    </div>
+
+    <!-- Processing Panel -->
+    <section class="content-card upload-card">
+
+      <div class="section-heading upload-header">
+        <div>
+          <p class="section-eyebrow">TRANSACTION INGESTION</p>
+          <h2>CSV Processing</h2>
+          <p>Your file is being processed through the FinTrust risk monitoring pipeline.</p>
+        </div>
+
+        <span class="upload-status">
+          <span class="status-dot online"></span>
+          Processing
+        </span>
+      </div>
+
+      <!-- Upload Details -->
+      <div class="upload-details">
+
+        <div class="detail-item">
+          <span class="detail-label">UPLOAD ID</span>
+          <strong class="mono">UP-20261015-001</strong>
+        </div>
+
+        <div class="detail-item">
+          <span class="detail-label">FILE NAME</span>
+          <strong>fintrust_transactions.csv</strong>
+        </div>
+
+        <div class="detail-item">
+          <span class="detail-label">CURRENT STAGE</span>
+          <strong>Data Validation</strong>
+        </div>
+
+      </div>
+
+      <!-- Overall Progress -->
+      <div class="upload-progress-section">
+
+        <div class="progress-heading">
+          <div>
+            <h3>Overall Progress</h3>
+            <p>Stage 3 of 6 completed</p>
+          </div>
+
+          <strong class="progress-percentage">50%</strong>
+        </div>
+
+        <div class="upload-progress">
+          <div class="upload-progress-fill"></div>
+        </div>
+
+        <div class="progress-footer">
+          <span>Processing your transactions</span>
+          <span>3 / 6 stages</span>
+        </div>
+
+      </div>
+
+      <!-- Processing Stages -->
+      <div class="upload-stages-section">
+
+        <div class="upload-section-heading">
+          <h3>Processing Stages</h3>
+          <span>3 of 6 completed</span>
+        </div>
+
+        <div class="stage-list">
+
+          <div class="stage-item completed">
+            <div class="stage-indicator">✓</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>File Received</h4>
+                <span class="stage-status">Completed</span>
+              </div>
+              <p>CSV uploaded to Amazon S3 and assigned an upload ID.</p>
+            </div>
+          </div>
+
+          <div class="stage-item completed">
+            <div class="stage-indicator">✓</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>Processing Started</h4>
+                <span class="stage-status">Completed</span>
+              </div>
+              <p>AWS Step Functions has started the ingestion workflow.</p>
+            </div>
+          </div>
+
+          <div class="stage-item active">
+            <div class="stage-indicator">3</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>Data Validation</h4>
+                <span class="stage-status">In Progress</span>
+              </div>
+              <p>Records are checked for valid formats, required fields and data quality.</p>
+              <div class="stage-progress">
+                <div class="stage-progress-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage-item pending">
+            <div class="stage-indicator">4</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>Transactions Queued</h4>
+                <span class="stage-status">Pending</span>
+              </div>
+              <p>Valid records are added to Amazon SQS for processing.</p>
+            </div>
+          </div>
+
+          <div class="stage-item pending">
+            <div class="stage-indicator">5</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>Risk Assessment</h4>
+                <span class="stage-status">Pending</span>
+              </div>
+              <p>Transactions are evaluated against FinTrust's risk detection rules.</p>
+            </div>
+          </div>
+
+          <div class="stage-item pending">
+            <div class="stage-indicator">6</div>
+            <div class="stage-content">
+              <div class="stage-title-row">
+                <h4>Results Saved</h4>
+                <span class="stage-status">Pending</span>
+              </div>
+              <p>Processed transactions and risk results are saved to the database.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Processing Summary -->
+      <div class="upload-summary-section">
+
+        <div class="upload-section-heading">
+          <h3>Processing Summary</h3>
+          <span>Current results</span>
+        </div>
+
+        <div class="upload-summary-grid">
+
+          <div class="upload-summary-item">
+            <span>TOTAL RECORDS</span>
+            <strong>250</strong>
+          </div>
+
+          <div class="upload-summary-item valid">
+            <span>VALID RECORDS</span>
+            <strong>245</strong>
+          </div>
+
+          <div class="upload-summary-item quarantined">
+            <span>QUARANTINED</span>
+            <strong>5</strong>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="upload-card-footer">
+        <div class="refresh-indicator">
+          <span class="status-dot online"></span>
+          Automatically refreshing status
+        </div>
+
+        <span>FinTrust Transaction Monitoring</span>
+      </div>
+
+    </section>
+  </main>
+</body>
+</html>

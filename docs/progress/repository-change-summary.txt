@@ -1,0 +1,15 @@
+ fintrust/dynamo.py                                 | 590 [32m++++++++++++++++++++[m[31m-[m
+ fintrust/ingest.py                                 | 302 [32m++++++++[m[31m---[m
+ fintrust/score.py                                  |  20 [32m+[m[31m-[m
+ infrastructure/dynamodb/upload-tracking-table.json |  24 [32m+[m
+ .../iam/ingest-upload-tracking-policy.json         |  13 [32m+[m
+ .../iam/query-upload-workflow-policy.json          |  21 [32m+[m
+ .../iam/score-upload-tracking-policy.json          |  15 [32m+[m
+ .../step-functions/iam-execution-policy.json       |  15 [32m+[m
+ .../step-functions/iam-trust-policy.json           |  12 [32m+[m
+ .../step-functions/upload-workflow.asl.json        |  73 [32m+++[m
+ main.py                                            | 115 [32m+++[m[31m-[m
+ tests/conftest.py                                  |  21 [32m+[m[31m-[m
+ tests/unit/test_dynamo.py                          | 384 [32m++++++++++++[m[31m--[m
+ tests/unit/test_score_persistence.py               | 144 [32m++++[m[31m-[m
+ 14 files changed, 1593 insertions(+), 156 deletions(-)

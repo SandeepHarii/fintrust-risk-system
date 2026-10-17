@@ -1,0 +1,4 @@
+transaction_id,account_id,tx_date,amount,currency,transaction_type,source_country,destination_country
+6e2f9a41-8c73-4b15-a620-9d3f7e1c5208,4f8c2a61-7d39-45b0-a216-9e5f3c81d704,2026-10-13T19:00:00+02:00,65000.00,ZAR,TRANSFER,ZA,ZA
+7f3a0b52-9d84-4c26-b731-0e4a8f2d6319,f62a8c15-3d97-4e40-b251-9a6f1c83d507,2026-10-13T19:05:00+02:00,375.00,ZAR,,ZA,ZA
+8a4b1c63-0e95-4d37-8c42-1f5b9a3e7420,3a6f9d21-5c84-47b0-a193-8e2d6f71c405,2026-10-13T19:10:00+02:00,850.00,ZAR,TRANSFER,ZA,ZA

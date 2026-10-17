@@ -91,3 +91,27 @@ upload-cors-request-templates.json
 
 .DS_Store
 Thumbs.db
+
+# ------------------------------------------------------------
+# Local Lambda Deployment Artifacts
+# ------------------------------------------------------------
+
+fintrust-prod-*.zip
+deployed-ingest.zip
+
+# Local deployment staging directories
+query-build/
+ingest-package/
+score-package/
+fintrust-score-inspection/
+
+# ------------------------------------------------------------
+# Local AWS Inspection Data
+# ------------------------------------------------------------
+
+ddb-filter.json
+dynamodb-key.json
+dynamodb-risk-events-backup.json
+dynamodb-values.json
+score-marker-key.json
+tracking-key.json
