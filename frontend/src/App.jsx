@@ -40,13 +40,13 @@ async function apiRequest(path, options = {}) {
   })
 
   const text = await response.text()
-  let data = null
+ let data
 
-  try {
-    data = text ? JSON.parse(text) : null
-  } catch {
-    data = text
-  }
+try {
+  data = text ? JSON.parse(text) : null
+} catch {
+  data = text
+}
 
   if (!response.ok) {
     const message =
@@ -1787,8 +1787,12 @@ function RiskOverviewScreen({
   }, [])
 
   useEffect(() => {
+  const timer = setTimeout(() => {
     loadQueue(queuePage)
-  }, [loadQueue, queuePage, refreshSignal])
+  }, 0)
+
+  return () => clearTimeout(timer)
+}, [loadQueue, queuePage, refreshSignal])
 
   if (loading) {
     return (
