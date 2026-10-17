@@ -181,6 +181,11 @@ function formatReportMonth(period) {
   })
 }
 
+function formatPercent(value, total) {
+  if (!total || total <= 0) return '—'
+  return `${((value / total) * 100).toFixed(1)}%`
+}
+
 function getTransactionId(t, i = 0) {
   return t?.transaction_id ?? `Record ${i + 1}`
 }
@@ -250,6 +255,194 @@ function Empty({ title, body }) {
   )
 }
 
+/**
+ * Shared server-paginated transaction table.
+ * Used by both the Transactions ledger and the Risk review queue so the
+ * two screens stay visually and behaviourally consistent.
+ */
+function TransactionTable({
+  transactions,
+  pagination,
+  loading,
+  error,
+  emptyMessage,
+  onSelect,
+  onPageChange,
+}) {
+  const total = Number(pagination?.total ?? 0)
+  const totalPages = Math.max(1, Number(pagination?.total_pages ?? 1))
+  const safePage = Number(pagination?.page ?? 1)
+  const pageSize = Number(pagination?.page_size ?? PAGE_SIZE)
+
+  const startIndex = total === 0 ? 0 : (safePage - 1) * pageSize
+  const endIndex = Math.min(startIndex + transactions.length, total)
+
+  const canPrev = safePage > 1
+  const canNext = safePage < totalPages
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table className="txn-table">
+          <colgroup>
+            <col className="col-risk" />
+            <col className="col-txn" />
+            <col className="col-account" />
+            <col className="col-amount" />
+            <col className="col-flags" />
+            <col className="col-date" />
+          </colgroup>
+
+          <thead>
+            <tr>
+              <th scope="col">Risk</th>
+              <th scope="col">Transaction</th>
+              <th scope="col">Account</th>
+              <th scope="col" className="right">
+                Amount
+              </th>
+              <th scope="col">Flag</th>
+              <th scope="col" className="right">
+                Date
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {loading && transactions.length === 0 && (
+              <tr>
+                <td colSpan={6} className="empty-row">
+                  Loading transactions…
+                </td>
+              </tr>
+            )}
+
+            {!loading && error && (
+              <tr>
+                <td colSpan={6} className="empty-row">
+                  Unable to load transactions: {error}
+                </td>
+              </tr>
+            )}
+
+            {!loading && !error && transactions.length === 0 && (
+              <tr>
+                <td colSpan={6} className="empty-row">
+                  {emptyMessage ?? 'No transactions match the current filter.'}
+                </td>
+              </tr>
+            )}
+
+            {transactions.map((t, index) => {
+              const globalIndex = startIndex + index
+              const risk = getRiskLabel(t)
+              const id = getTransactionId(t, globalIndex)
+
+              const shortId =
+                typeof id === 'string' ? id.replace(/^TXN-?/i, '') : id
+
+              const flags = getTransactionFlags(t)
+              const dateValue = t.tx_date ?? t.created_at
+
+              return (
+                <tr
+                  key={String(id)}
+                  className={`row-${risk.toLowerCase()}`}
+                  onClick={() => onSelect(t)}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onSelect(t)
+                    }
+                  }}
+                >
+                  <td>
+                    <span className={`risk-badge ${risk.toLowerCase()}`}>
+                      <span className="badge-dot" />
+                      {risk}
+                    </span>
+                  </td>
+
+                  <td>
+                    <strong className="mono txn-id">#{shortId}</strong>
+                  </td>
+
+                  <td>
+                    <span className="mono account-mask">
+                      {t.account_id ?? '—'}
+                    </span>
+                  </td>
+
+                  <td className="amount right">
+                    {formatCurrency(t.amount, t.currency)}
+                  </td>
+
+                  <td>
+                    {flags.length === 0 ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      <span className="flag-stack">
+                        {flags.map((f) => (
+                          <span className="flag-pill" key={f}>
+                            {f}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="right muted">
+                    <span className="date-cell">
+                      {formatDateShort(dateValue)}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pagination">
+        <span className="pagination-info">
+          {loading
+            ? 'Loading…'
+            : total === 0
+              ? 'No records'
+              : `Showing ${startIndex + 1}–${endIndex} of ${total}`}
+        </span>
+
+        <div className="pagination-controls">
+          <button
+            className="pagination-button"
+            type="button"
+            onClick={() => onPageChange(safePage - 1)}
+            disabled={!canPrev || loading}
+            aria-label="Previous page"
+          >
+            ← Prev
+          </button>
+
+          <span className="pagination-page mono">
+            Page {safePage} of {totalPages}
+          </span>
+
+          <button
+            className="pagination-button"
+            type="button"
+            onClick={() => onPageChange(safePage + 1)}
+            disabled={!canNext || loading}
+            aria-label="Next page"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
 /* ==================================================================
  * ==================================================================
  * ==                                                              ==
@@ -257,10 +450,6 @@ function Empty({ title, body }) {
  * ==                                                              ==
  * ==================================================================
  * ================================================================== */
-
-/* ------------------------------------------------------------------
- * CSV Processing — stage definitions
- * ------------------------------------------------------------------ */
 
 const PROCESSING_STAGES = [
   {
@@ -304,10 +493,6 @@ const PROCESSING_STAGES = [
   },
 ]
 
-/* ------------------------------------------------------------------
- * CSV Processing — global toast notification
- * ------------------------------------------------------------------ */
-
 function ToastNotification({ toast, onDismiss }) {
   if (!toast) return null
 
@@ -338,15 +523,12 @@ function ToastNotification({ toast, onDismiss }) {
   )
 }
 
-/* ------------------------------------------------------------------
- * CSV Processing — screen component
- * ------------------------------------------------------------------ */
-
 function ProcessingScreen({
   uploadId,
   fileName,
   progress,
   progressError,
+  onUploadAnother,
 }) {
   const status = String(progress?.status ?? 'PROCESSING').toUpperCase()
   const isCompleted = status === 'COMPLETED'
@@ -572,7 +754,17 @@ function ProcessingScreen({
                 : 'Live updates · checking every second'}
           </div>
 
-          <span>FinTrust Transaction Monitoring</span>
+          {isCompleted || isFailed ? (
+            <button
+              className="primary-button"
+              type="button"
+              onClick={onUploadAnother}
+            >
+              ↑ Upload another file
+            </button>
+          ) : (
+            <span>FinTrust Transaction Monitoring</span>
+          )}
         </div>
       </section>
     </div>
@@ -582,10 +774,6 @@ function ProcessingScreen({
 /* ==================================================================
  * ==               END OF CSV PROCESSING SECTION                  ==
  * ================================================================== */
-
-/* ------------------------------------------------------------------
- * Drop zone
- * ------------------------------------------------------------------ */
 
 function DropZone({ onFile, uploading, uploadMessage }) {
   const [hover, setHover] = useState(false)
@@ -692,10 +880,6 @@ function DropZone({ onFile, uploading, uploadMessage }) {
   )
 }
 
-/* ------------------------------------------------------------------
- * Back to top
- * ------------------------------------------------------------------ */
-
 function BackToTop() {
   const [visible, setVisible] = useState(false)
 
@@ -728,10 +912,6 @@ function BackToTop() {
     </button>
   )
 }
-
-/* ------------------------------------------------------------------
- * Detail drawer
- * ------------------------------------------------------------------ */
 
 function DetailDrawer({ transaction, onClose }) {
   const open = Boolean(transaction)
@@ -846,10 +1026,6 @@ function DetailDrawer({ transaction, onClose }) {
   )
 }
 
-/* ------------------------------------------------------------------
- * Sidebar
- * ------------------------------------------------------------------ */
-
 function Sidebar({ activePage, onNavigate, apiStatus }) {
   return (
     <aside className="sidebar">
@@ -923,10 +1099,6 @@ function Sidebar({ activePage, onNavigate, apiStatus }) {
     </aside>
   )
 }
-
-/* ------------------------------------------------------------------
- * Topbar
- * ------------------------------------------------------------------ */
 
 function RefreshIcon({ spinning }) {
   return (
@@ -1008,10 +1180,6 @@ function Topbar({
   )
 }
 
-/* ------------------------------------------------------------------
- * Summary cards
- * ------------------------------------------------------------------ */
-
 function SummaryCards({ transactions, insights, loading }) {
   const insightTx =
     insights?.transactions && typeof insights.transactions === 'object'
@@ -1032,11 +1200,6 @@ function SummaryCards({ transactions, insights, loading }) {
       { high: 0, medium: 0, low: 0 },
     )
   }, [transactions])
-
-  const totalValue = useMemo(
-    () => transactions.reduce((s, t) => s + (toNumber(t.amount) ?? 0), 0),
-    [transactions],
-  )
 
   const cards = [
     {
@@ -1061,10 +1224,10 @@ function SummaryCards({ transactions, insights, loading }) {
       color: 'amber',
     },
     {
-      label: 'Ledger value',
-      value: formatCompactCurrency(totalValue),
-      note: 'Sum of records on this page',
-      icon: 'R',
+      label: 'Low-risk transactions',
+      value: formatNumber(insightTx.low ?? counts.low),
+      note: 'Routine activity, no action needed',
+      icon: '✓',
       color: 'green',
     },
   ]
@@ -1087,10 +1250,6 @@ function SummaryCards({ transactions, insights, loading }) {
     </section>
   )
 }
-
-/* ------------------------------------------------------------------
- * Risk donut
- * ------------------------------------------------------------------ */
 
 function RiskDonut({ counts }) {
   const total = counts.high + counts.medium + counts.low
@@ -1146,10 +1305,6 @@ function RiskDonut({ counts }) {
   )
 }
 
-/* ------------------------------------------------------------------
- * Daily volume
- * ------------------------------------------------------------------ */
-
 function DailyVolume({ transactions }) {
   const data = useMemo(() => {
     const buckets = new Map()
@@ -1202,10 +1357,6 @@ function DailyVolume({ transactions }) {
     </div>
   )
 }
-
-/* ------------------------------------------------------------------
- * Overview
- * ------------------------------------------------------------------ */
 
 function OverviewScreen({ transactions, insights, loading }) {
   const counts = useMemo(() => {
@@ -1280,12 +1431,6 @@ function OverviewScreen({ transactions, insights, loading }) {
           </div>
         </article>
       </section>
-
-      <RiskMonitoring
-        insights={insights}
-        transactions={transactions}
-        loading={loading}
-      />
     </>
   )
 }
@@ -1308,6 +1453,7 @@ function TransactionsScreen({
   uploading,
   uploadMessage,
   processingJob,
+  onUploadAnother,
 }) {
   const [search, setSearch] = useState('')
   const [riskFilter, setRiskFilter] = useState('All')
@@ -1349,32 +1495,24 @@ function TransactionsScreen({
   }
 
   const total = Number(pagination?.total ?? 0)
-  const totalPages = Math.max(1, Number(pagination?.total_pages ?? 1))
-  const safePage = Number(pagination?.page ?? page)
-  const pageSize = Number(pagination?.page_size ?? PAGE_SIZE)
-
-  const startIndex = total === 0 ? 0 : (safePage - 1) * pageSize
-  const endIndex = Math.min(startIndex + transactions.length, total)
-
-  const canPrev = safePage > 1
-  const canNext = safePage < totalPages
 
   return (
     <>
-      {processingJob && (
+      {processingJob ? (
         <ProcessingScreen
           uploadId={processingJob.uploadId}
           fileName={processingJob.fileName}
           progress={processingJob.progress}
           progressError={processingJob.progressError}
+          onUploadAnother={onUploadAnother}
+        />
+      ) : (
+        <DropZone
+          onFile={onFile}
+          uploading={uploading}
+          uploadMessage={uploadMessage}
         />
       )}
-
-      <DropZone
-        onFile={onFile}
-        uploading={uploading}
-        uploadMessage={uploadMessage}
-      />
 
       <section className="content-card filter-card">
         <SectionHeading
@@ -1475,179 +1613,55 @@ function TransactionsScreen({
           }
         />
 
-        <div className="table-wrap">
-          <table className="txn-table">
-            <colgroup>
-              <col className="col-risk" />
-              <col className="col-txn" />
-              <col className="col-account" />
-              <col className="col-amount" />
-              <col className="col-flags" />
-              <col className="col-date" />
-            </colgroup>
-
-            <thead>
-              <tr>
-                <th scope="col">Risk</th>
-                <th scope="col">Transaction</th>
-                <th scope="col">Account</th>
-                <th scope="col" className="right">
-                  Amount
-                </th>
-                <th scope="col">Flag</th>
-                <th scope="col" className="right">
-                  Date
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading && transactions.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="empty-row">
-                    Loading transactions…
-                  </td>
-                </tr>
-              )}
-
-              {!loading && ledgerError && (
-                <tr>
-                  <td colSpan={6} className="empty-row">
-                    Unable to load transactions: {ledgerError}
-                  </td>
-                </tr>
-              )}
-
-              {!loading && !ledgerError && transactions.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="empty-row">
-                    No transactions match the current filter.
-                  </td>
-                </tr>
-              )}
-
-              {transactions.map((t, index) => {
-                const globalIndex = startIndex + index
-                const risk = getRiskLabel(t)
-                const id = getTransactionId(t, globalIndex)
-
-                const shortId =
-                  typeof id === 'string' ? id.replace(/^TXN-?/i, '') : id
-
-                const flags = getTransactionFlags(t)
-                const dateValue = t.tx_date ?? t.created_at
-
-                return (
-                  <tr
-                    key={String(id)}
-                    className={`row-${risk.toLowerCase()}`}
-                    onClick={() => onSelect(t)}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        onSelect(t)
-                      }
-                    }}
-                  >
-                    <td>
-                      <span className={`risk-badge ${risk.toLowerCase()}`}>
-                        <span className="badge-dot" />
-                        {risk}
-                      </span>
-                    </td>
-
-                    <td>
-                      <strong className="mono txn-id">#{shortId}</strong>
-                    </td>
-
-                    <td>
-                      <span className="mono account-mask">
-                        {t.account_id ?? '—'}
-                      </span>
-                    </td>
-
-                    <td className="amount right">
-                      {formatCurrency(t.amount, t.currency)}
-                    </td>
-
-                    <td>
-                      {flags.length === 0 ? (
-                        <span className="muted">—</span>
-                      ) : (
-                        <span className="flag-stack">
-                          {flags.map((f) => (
-                            <span className="flag-pill" key={f}>
-                              {f}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="right muted">
-                      <span className="date-cell">
-                        {formatDateShort(dateValue)}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pagination">
-          <span className="pagination-info">
-            {loading
-              ? 'Loading…'
-              : total === 0
-                ? 'No records'
-                : `Showing ${startIndex + 1}–${endIndex} of ${total}`}
-          </span>
-
-          <div className="pagination-controls">
-            <button
-              className="pagination-button"
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={!canPrev || loading}
-              aria-label="Previous page"
-            >
-              ← Prev
-            </button>
-
-            <span className="pagination-page mono">
-              Page {safePage} of {totalPages}
-            </span>
-
-            <button
-              className="pagination-button"
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={!canNext || loading}
-              aria-label="Next page"
-            >
-              Next →
-            </button>
-          </div>
-        </div>
+        <TransactionTable
+          transactions={transactions}
+          pagination={pagination}
+          loading={loading}
+          error={ledgerError}
+          emptyMessage="No transactions match the current filter."
+          onSelect={onSelect}
+          onPageChange={setPage}
+        />
       </section>
     </>
   )
 }
 
 /* ------------------------------------------------------------------
- * Risk monitoring
+ * Risk overview (dedicated Risk monitoring page)
  * ------------------------------------------------------------------ */
 
-function RiskMonitoring({ insights, transactions, loading }) {
+function RiskLevelCard({ level, count, total, description }) {
+  return (
+    <article className={`risk-level-card ${level}`}>
+      <div className="risk-level-card-top">
+        <span className={`risk-badge ${level}`}>
+          <span className="badge-dot" />
+          {level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low'}
+        </span>
+
+        <span className="risk-level-share">{formatPercent(count, total)}</span>
+      </div>
+
+      <h3>{formatNumber(count)}</h3>
+      <p className="risk-level-desc">{description}</p>
+    </article>
+  )
+}
+
+function RiskOverviewScreen({
+  transactions,
+  insights,
+  loading,
+  onSelect,
+  refreshSignal,
+}) {
   const insightTx =
     insights?.transactions && typeof insights.transactions === 'object'
       ? insights.transactions
       : {}
 
-  const counts = useMemo(() => {
+  const loadedCounts = useMemo(() => {
     return transactions.reduce(
       (acc, t) => {
         const r = getRisk(t)
@@ -1662,10 +1676,12 @@ function RiskMonitoring({ insights, transactions, loading }) {
     )
   }, [transactions])
 
-  const high = insightTx.high ?? counts.high
-  const medium = insightTx.medium ?? counts.medium
-  const low = insightTx.low ?? counts.low
+  const high = insightTx.high ?? loadedCounts.high
+  const medium = insightTx.medium ?? loadedCounts.medium
+  const low = insightTx.low ?? loadedCounts.low
   const total = high + medium + low
+
+  const needsReview = high + medium
 
   const pct = (n) => (total === 0 ? 0 : (n / total) * 100)
 
@@ -1675,60 +1691,237 @@ function RiskMonitoring({ insights, transactions, loading }) {
     { key: 'low', label: 'Low', value: low },
   ]
 
-  return (
-    <section className="content-card" id="risk">
-      <SectionHeading
-        eyebrow="risk_flag distribution"
-        title="Risk monitoring"
-        subtitle="Rule-based risk classification produced by the score Lambda."
-        right={
-          <span className="live-label">
-            <StatusDot status="online" />
-            Live
-          </span>
-        }
-      />
+  const [queuePage, setQueuePage] = useState(1)
+  const [queueRows, setQueueRows] = useState([])
+  const [queuePagination, setQueuePagination] = useState({
+    page: 1,
+    page_size: PAGE_SIZE,
+    total: 0,
+    total_pages: 1,
+  })
+  const [queueLoading, setQueueLoading] = useState(false)
+  const [queueError, setQueueError] = useState('')
 
-      {loading ? (
-        <div className="panel-padding">
-          <p className="muted">Loading risk distribution…</p>
-        </div>
-      ) : total === 0 ? (
+  const queueRequestId = useRef(0)
+
+  const loadQueue = useCallback(async (page = 1) => {
+    const requestId = ++queueRequestId.current
+
+    setQueueLoading(true)
+    setQueueError('')
+
+    try {
+      const fetchSize = page * PAGE_SIZE
+
+      const [highResult, mediumResult] = await Promise.all([
+        apiRequest(
+          `/transactions?risk_filter=HIGH&page=1&page_size=${fetchSize}`,
+        ),
+        apiRequest(
+          `/transactions?risk_filter=MEDIUM&page=1&page_size=${fetchSize}`,
+        ),
+      ])
+
+      if (requestId !== queueRequestId.current) return
+
+      const highRows = getArray(highResult)
+      const mediumRows = getArray(mediumResult)
+
+      const highMeta =
+        highResult?.pagination && typeof highResult.pagination === 'object'
+          ? highResult.pagination
+          : highResult
+
+      const mediumMeta =
+        mediumResult?.pagination &&
+        typeof mediumResult.pagination === 'object'
+          ? mediumResult.pagination
+          : mediumResult
+
+      const highTotal = Number(highMeta?.total ?? highRows.length)
+      const mediumTotal = Number(mediumMeta?.total ?? mediumRows.length)
+
+      const merged = [...highRows, ...mediumRows].sort((a, b) => {
+        const ra = getRisk(a) === 'High' ? 0 : 1
+        const rb = getRisk(b) === 'High' ? 0 : 1
+        if (ra !== rb) return ra - rb
+
+        const aa = toNumber(a.amount) ?? 0
+        const ab = toNumber(b.amount) ?? 0
+        return ab - aa
+      })
+
+      const combinedTotal = highTotal + mediumTotal
+      const combinedTotalPages = Math.max(
+        1,
+        Math.ceil(combinedTotal / PAGE_SIZE),
+      )
+
+      const start = (page - 1) * PAGE_SIZE
+      const end = start + PAGE_SIZE
+      const pageRows = merged.slice(start, end)
+
+      setQueueRows(pageRows)
+      setQueuePagination({
+        page,
+        page_size: PAGE_SIZE,
+        total: combinedTotal,
+        total_pages: combinedTotalPages,
+      })
+    } catch (err) {
+      if (requestId !== queueRequestId.current) return
+
+      setQueueError(err.message || 'Unable to load the review queue.')
+      setQueueRows([])
+      setQueuePagination({
+        page,
+        page_size: PAGE_SIZE,
+        total: 0,
+        total_pages: 1,
+      })
+    } finally {
+      if (requestId === queueRequestId.current) {
+        setQueueLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    loadQueue(queuePage)
+  }, [loadQueue, queuePage, refreshSignal])
+
+  if (loading) {
+    return (
+      <section className="content-card">
         <div className="panel-padding">
           <Empty
-            title="No risk data yet"
-            body="Upload a CSV or refresh to populate the risk distribution."
+            title="Loading risk data…"
+            body="Fetching the current risk distribution."
           />
         </div>
-      ) : (
-        <div className="risk-panel">
-          <div
-            className="risk-meter"
-            role="img"
-            aria-label={`Risk distribution across ${total} records`}
-          >
-            {segments.map(
-              (s) =>
-                s.value > 0 && (
-                  <span
-                    key={s.key}
-                    className={`risk-meter-seg ${s.key}`}
-                    style={{ width: `${pct(s.value)}%` }}
-                    title={`${s.label}: ${s.value} (${pct(s.value).toFixed(1)}%)`}
-                  >
-                    <span className="risk-meter-seg-label">{s.label}</span>
-                  </span>
-                ),
-            )}
-          </div>
-        </div>
-      )}
+      </section>
+    )
+  }
 
-      <p className="demo-notice">
-        Counts come from the /insights endpoint or the transactions returned
-        to this dashboard.
-      </p>
-    </section>
+  return (
+    <>
+      <section className="content-card risk-hero">
+        <SectionHeading
+          eyebrow="RISK POSTURE"
+          title="Portfolio risk overview"
+          subtitle="How the current ledger splits across HIGH, MEDIUM and LOW risk classifications."
+          right={
+            <span className="live-label">
+              <StatusDot status="online" /> Live
+            </span>
+          }
+        />
+
+        {total === 0 ? (
+          <div className="panel-padding">
+            <Empty
+              title="No risk data yet"
+              body="Upload a CSV or refresh to populate the risk distribution."
+            />
+          </div>
+        ) : (
+          <>
+            <div className="risk-hero-figures">
+              <div className="risk-hero-figure">
+                <span>Classified records</span>
+                <strong>{formatNumber(total)}</strong>
+              </div>
+
+              <div className="risk-hero-figure attention">
+                <span>Needs attention</span>
+                <strong>{formatNumber(needsReview)}</strong>
+                <em>{formatPercent(needsReview, total)} of total</em>
+              </div>
+
+              <div className="risk-hero-figure clear">
+                <span>Low risk</span>
+                <strong>{formatNumber(low)}</strong>
+                <em>{formatPercent(low, total)} of total</em>
+              </div>
+            </div>
+
+            <div
+              className="risk-meter risk-meter-lg"
+              role="img"
+              aria-label={`Risk distribution across ${total} records`}
+            >
+              {segments.map(
+                (s) =>
+                  s.value > 0 && (
+                    <span
+                      key={s.key}
+                      className={`risk-meter-seg ${s.key}`}
+                      style={{ width: `${pct(s.value)}%` }}
+                      title={`${s.label}: ${s.value} (${pct(s.value).toFixed(1)}%)`}
+                    >
+                      <span className="risk-meter-seg-label">{s.label}</span>
+                    </span>
+                  ),
+              )}
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="risk-level-grid" aria-label="Risk level breakdown">
+        <RiskLevelCard
+          level="high"
+          count={high}
+          total={total}
+          description="Require priority review. Escalate to compliance before settlement."
+        />
+        <RiskLevelCard
+          level="medium"
+          count={medium}
+          total={total}
+          description="Flagged for investigation. Monitor for escalation patterns."
+        />
+        <RiskLevelCard
+          level="low"
+          count={low}
+          total={total}
+          description="Routine activity. No action required under current rules."
+        />
+      </section>
+
+      <section className="content-card">
+        <SectionHeading
+          eyebrow="REVIEW QUEUE"
+          title="Transactions needing review"
+          subtitle="High-risk records first, then medium-risk. Click any row for the full record."
+          right={
+            <span className="table-count">
+              {queueLoading
+                ? 'Loading…'
+                : `${formatNumber(queuePagination.total)} record${
+                    queuePagination.total === 1 ? '' : 's'
+                  }`}
+            </span>
+          }
+        />
+
+        <TransactionTable
+          transactions={queueRows}
+          pagination={queuePagination}
+          loading={queueLoading}
+          error={queueError}
+          emptyMessage="No HIGH or MEDIUM risk transactions are present in the ledger."
+          onSelect={onSelect}
+          onPageChange={setQueuePage}
+        />
+
+        <p className="demo-notice">
+          The review queue shows only HIGH and MEDIUM risk transactions,
+          fetched directly from /transactions. Pagination matches the
+          Transaction ledger (5 rows per page).
+        </p>
+      </section>
+    </>
   )
 }
 
@@ -1777,7 +1970,6 @@ function ReportsScreen({ transactions, insights, loading }) {
   const summary = useMemo(() => {
     const loadedRisk = { high: 0, medium: 0, low: 0 }
     const byCountry = new Map()
-    let total = 0
 
     transactions.forEach((t) => {
       const risk = getRisk(t)
@@ -1787,8 +1979,6 @@ function ReportsScreen({ transactions, insights, loading }) {
       else if (risk === 'Low') loadedRisk.low += 1
 
       const amount = toNumber(t.amount) ?? 0
-      total += amount
-
       const country = t.source_country ?? 'Unknown'
 
       byCountry.set(country, (byCountry.get(country) ?? 0) + amount)
@@ -1812,8 +2002,6 @@ function ReportsScreen({ transactions, insights, loading }) {
         .map(([country, value]) => ({ country, value }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 6),
-
-      total,
     }
   }, [transactions, insights])
 
@@ -1969,7 +2157,7 @@ function ReportsScreen({ transactions, insights, loading }) {
         <SectionHeading
           eyebrow="LIVE TRANSACTION DATA"
           title="Current transaction snapshot"
-          subtitle="Full-ledger transaction and risk counts are sourced from /insights. Ledger value and country breakdown are calculated from the dashboard's currently loaded records."
+          subtitle="Full-ledger transaction and risk counts are sourced from /insights. The country breakdown is calculated from the dashboard's currently loaded records."
           right={
             <span className="live-label">
               <StatusDot status="online" />
@@ -1989,11 +2177,6 @@ function ReportsScreen({ transactions, insights, loading }) {
               <div className="report-tile">
                 <p>Total transactions</p>
                 <h3>{formatNumber(summary.totalTransactions)}</h3>
-              </div>
-
-              <div className="report-tile">
-                <p>Ledger value</p>
-                <h3>{formatCompactCurrency(summary.total)}</h3>
               </div>
 
               <div className="report-tile high">
@@ -2055,10 +2238,10 @@ function ReportsScreen({ transactions, insights, loading }) {
         )}
 
         <p className="demo-notice">
-          Transaction and risk counts come from the /insights endpoint. Ledger
-          value and country breakdown use the dashboard's currently loaded
-          records, so they are not full-ledger monetary aggregates. The
-          complete monthly report is generated separately by report.py.
+          Transaction and risk counts come from the /insights endpoint. The
+          country breakdown uses the dashboard's currently loaded records, so
+          it is not a full-ledger monetary aggregate. The complete monthly
+          report is generated separately by report.py.
         </p>
       </section>
     </>
@@ -2288,10 +2471,6 @@ function App() {
     loadDashboard()
   }, [loadDashboard])
 
-  /* ----------------------------------------------------------------
-   * CSV Processing — live progress polling
-   * ---------------------------------------------------------------- */
-
   useEffect(() => {
     if (!processingJob?.uploadId) return
 
@@ -2352,31 +2531,29 @@ function App() {
         }
 
         if (status === 'COMPLETED') {
-  if (!completionNotified) {
-    completionNotified = true
+          if (!completionNotified) {
+            completionNotified = true
 
-    const duplicateCount = Number(progress?.duplicate_records ?? 0)
+            const duplicateCount = Number(progress?.duplicate_records ?? 0)
 
-    notify(
-      'Processing completed',
-      'All six processing stages have completed successfully.',
-      'success',
-    )
+            notify(
+              'Processing completed',
+              'All six processing stages have completed successfully.',
+              'success',
+            )
 
-    if (Number.isFinite(duplicateCount) && duplicateCount > 0) {
-      toastQueueRef.current.push({
-        title: 'Duplicate transactions detected',
-        message: `${formatNumber(duplicateCount)} transactions were already processed. Existing records were reused, preventing duplicate entries and unnecessary risk calculations.`,
-        type: 'success',
-      })
-    }
-  }
+            if (Number.isFinite(duplicateCount) && duplicateCount > 0) {
+              toastQueueRef.current.push({
+                title: 'Duplicate transactions detected',
+                message: `${formatNumber(duplicateCount)} transactions were already processed. Existing records were reused, preventing duplicate entries and unnecessary risk calculations.`,
+                type: 'success',
+              })
+            }
+          }
 
-  return
-}
+          return
+        }
 
-        // Show the latest completed stage immediately.
-        // No notification queue or waiting behind older toasts.
         if (newlyCompleted.length > 0) {
           const latestStage = newlyCompleted[newlyCompleted.length - 1]
 
@@ -2477,15 +2654,22 @@ function App() {
     }
   }
 
+  const clearProcessingJob = useCallback(() => {
+    setProcessingJob(null)
+    setUploadMessage('')
+  }, [])
+
   const subtitles = {
     overview:
       'Live transaction activity, risk classification and pipeline health across the FinTrust environment.',
     transactions:
       'Upload new records and review every transaction returned by the API.',
-    risk: 'Rule-based risk classification produced by the score Lambda.',
+    risk: 'Risk posture, level breakdown and a prioritised review queue drawn from the live ledger.',
     reports:
       'Access generated monthly CSV and JSON reports stored in the FinTrust S3 reports bucket, alongside live transaction insights.',
   }
+
+  const [refreshSignal, setRefreshSignal] = useState(0)
 
   return (
     <div className="app-shell" data-theme={theme}>
@@ -2499,7 +2683,10 @@ function App() {
         <Topbar
           activePage={activePage}
           apiStatus={apiStatus}
-          onRefresh={loadDashboard}
+          onRefresh={() => {
+            loadDashboard()
+            setRefreshSignal((n) => n + 1)
+          }}
           loading={loading}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -2561,23 +2748,18 @@ function App() {
               uploading={uploading}
               uploadMessage={uploadMessage}
               processingJob={processingJob}
+              onUploadAnother={clearProcessingJob}
             />
           )}
 
           {activePage === 'risk' && (
-            <>
-              <SummaryCards
-                transactions={transactions}
-                insights={insights}
-                loading={loading}
-              />
-
-              <RiskMonitoring
-                insights={insights}
-                transactions={transactions}
-                loading={loading}
-              />
-            </>
+            <RiskOverviewScreen
+              transactions={transactions}
+              insights={insights}
+              loading={loading}
+              onSelect={setSelectedTransaction}
+              refreshSignal={refreshSignal}
+            />
           )}
 
           {activePage === 'reports' && (
