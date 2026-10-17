@@ -1,4 +1,6 @@
+
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -58,6 +60,9 @@ VALID_STAGE_STATUSES = {
     "FAILED",
 }
 
+TRANSACTION_MAX_ATTEMPTS = 4
+TRANSACTION_BASE_DELAY_SECONDS = 0.05
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -89,6 +94,64 @@ def _is_conditional_failure(exc: ClientError) -> bool:
         exc.response.get("Error", {}).get("Code")
         == "ConditionalCheckFailedException"
     )
+
+
+def _is_transaction_conflict(exc: ClientError) -> bool:
+    """
+    Identify genuine DynamoDB transaction conflicts.
+
+    TransactionCanceledException can contain several cancellation
+    reasons. Only TransactionConflict should trigger a retry.
+    """
+    error = exc.response.get("Error", {})
+    error_code = error.get("Code")
+
+    if error_code == "TransactionConflictException":
+        return True
+
+    if error_code != "TransactionCanceledException":
+        return False
+
+    cancellation_reasons = exc.response.get(
+        "CancellationReasons",
+        [],
+    )
+
+    return any(
+        reason.get("Code") == "TransactionConflict"
+        for reason in cancellation_reasons
+    )
+
+
+def _transact_write_with_retry(
+    transact_items: list[dict[str, Any]],
+) -> None:
+    """
+    Execute a DynamoDB transaction with bounded conflict retries.
+
+    Only confirmed TransactionConflict errors are retried.
+    All other errors are raised immediately.
+    """
+    for attempt in range(TRANSACTION_MAX_ATTEMPTS):
+        try:
+            _dynamodb_client.transact_write_items(
+                TransactItems=transact_items,
+            )
+            return
+
+        except ClientError as exc:
+            if (
+                not _is_transaction_conflict(exc)
+                or attempt == TRANSACTION_MAX_ATTEMPTS - 1
+            ):
+                raise
+
+            delay = (
+                TRANSACTION_BASE_DELAY_SECONDS
+                * (2 ** attempt)
+            )
+
+            time.sleep(delay)
 
 
 # ---------------------------------------------------------------------
@@ -616,8 +679,8 @@ def mark_transaction_scored(
     }
 
     try:
-        _dynamodb_client.transact_write_items(
-            TransactItems=[
+        _transact_write_with_retry(
+            transact_items=[
                 {
                     "Put": {
                         "TableName": UPLOAD_TRACKING_TABLE_NAME,
@@ -670,9 +733,13 @@ def mark_transaction_scored(
         )
 
     except ClientError as exc:
-        if _is_conditional_failure(exc) or (
-            exc.response.get("Error", {}).get("Code")
-            == "TransactionCanceledException"
+        error_code = exc.response.get(
+            "Error", {}
+        ).get("Code")
+
+        if (
+            _is_conditional_failure(exc)
+            or error_code == "TransactionCanceledException"
         ):
             existing_marker = upload_tracking_table.get_item(
                 Key={
@@ -684,6 +751,11 @@ def mark_transaction_scored(
 
             if existing_marker:
                 _complete_upload_if_ready(upload_id)
+                return False
+
+            latest = _get_upload_summary(upload_id)
+
+            if latest and latest.get("status") == "FAILED":
                 return False
 
         raise
@@ -722,8 +794,8 @@ def mark_transaction_persisted(
     }
 
     try:
-        _dynamodb_client.transact_write_items(
-            TransactItems=[
+        _transact_write_with_retry(
+            transact_items=[
                 {
                     "Put": {
                         "TableName": UPLOAD_TRACKING_TABLE_NAME,

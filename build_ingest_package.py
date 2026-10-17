@@ -7,7 +7,7 @@ import hashlib
 ROOT = Path.cwd()
 
 BUILD_SOURCE = ROOT / "ingest-build"
-SOURCE_PACKAGE = ROOT / "fintrust"
+SOURCE_PACKAGE = ROOT / "backend" / "fintrust"
 STAGING = ROOT / "ingest-package"
 OUTPUT_ZIP = ROOT / "fintrust-prod-ingest-candidate.zip"
 
@@ -67,12 +67,11 @@ def sha256_file(path: Path) -> str:
 
 
 if not SOURCE_PACKAGE.is_dir():
-    raise SystemExit("ERROR: fintrust source directory not found.")
+    raise SystemExit("ERROR: backend/fintrust source directory not found.")
 
 if not BUILD_SOURCE.is_dir():
     raise SystemExit("ERROR: ingest-build directory not found.")
 
-# Verify all dependency directories.
 for name in DEPENDENCY_DIRS + METADATA_DIRS:
     if not (BUILD_SOURCE / name).is_dir():
         raise SystemExit(
@@ -82,7 +81,6 @@ for name in DEPENDENCY_DIRS + METADATA_DIRS:
 if not (BUILD_SOURCE / "six.py").is_file():
     raise SystemExit("ERROR: six.py missing.")
 
-# Verify the Python 3.12 Linux x86_64 PyArrow extension.
 pyarrow_native = (
     BUILD_SOURCE
     / "pyarrow"
@@ -94,7 +92,6 @@ if not pyarrow_native.is_file():
         "ERROR: Python 3.12 Linux x86_64 PyArrow extension missing."
     )
 
-# Verify additional native PyArrow libraries.
 required_native = [
     "_compute.cpython-312-x86_64-linux-gnu.so",
     "_dataset.cpython-312-x86_64-linux-gnu.so",
@@ -106,26 +103,22 @@ for name in required_native:
             f"ERROR: Required PyArrow extension missing: {name}"
         )
 
-# Build in a separate staging directory.
 if STAGING.exists():
     rmtree(STAGING)
 
 STAGING.mkdir()
 
-# Copy current application source.
 copy_package(
     SOURCE_PACKAGE,
     STAGING / "fintrust",
 )
 
-# Copy compatible Linux dependencies.
 for name in DEPENDENCY_DIRS:
     copy_package(
         BUILD_SOURCE / name,
         STAGING / name,
     )
 
-# Copy package metadata.
 for name in METADATA_DIRS:
     copy_package(
         BUILD_SOURCE / name,
@@ -137,7 +130,6 @@ copy2(
     STAGING / "six.py",
 )
 
-# Create a fresh candidate ZIP.
 if OUTPUT_ZIP.exists():
     OUTPUT_ZIP.unlink()
 
@@ -154,7 +146,6 @@ with ZipFile(
                 path.relative_to(STAGING).as_posix(),
             )
 
-# Verify package contents.
 with ZipFile(OUTPUT_ZIP, "r") as archive:
     names = set(archive.namelist())
 
@@ -185,7 +176,6 @@ with ZipFile(OUTPUT_ZIP, "r") as archive:
                 f"ERROR: Required file missing: {name}"
             )
 
-    # Ensure no tests, caches or secrets were included.
     unwanted = [
         name
         for name in names
@@ -201,7 +191,6 @@ with ZipFile(OUTPUT_ZIP, "r") as archive:
             + "\n".join(unwanted[:20])
         )
 
-    # Verify exact source-file contents.
     for filename in ["ingest.py", "validators.py"]:
         source_bytes = (
             SOURCE_PACKAGE / filename
@@ -234,7 +223,6 @@ with ZipFile(OUTPUT_ZIP, "r") as archive:
         and name.endswith(".so")
     ]
 
-# Final build report.
 print("\nBUILD SUCCESSFUL")
 print(f"Candidate ZIP: {OUTPUT_ZIP.name}")
 print(

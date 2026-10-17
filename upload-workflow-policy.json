@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:eu-north-1:051084216179:function:fintrust-prod-ingest"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:eu-north-1:051084216179:table/fintrust-prod-upload-tracking"
+    },
+    {
+      "Sid": "InvokeUploadCompletionNotification",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:eu-north-1:051084216179:function:fintrust-prod-alert"
+    }
+  ]
+}

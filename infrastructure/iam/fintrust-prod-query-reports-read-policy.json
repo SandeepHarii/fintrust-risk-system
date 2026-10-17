@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListMonthlyReports",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::fintrust-prod-reports",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "monthly/*"
+        }
+      }
+    },
+    {
+      "Sid": "DownloadMonthlyReports",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::fintrust-prod-reports/monthly/*"
+    }
+  ]
+}

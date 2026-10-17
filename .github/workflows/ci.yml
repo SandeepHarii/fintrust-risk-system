@@ -72,7 +72,7 @@ jobs:
             -h localhost \
             -U postgres \
             -d fintrust \
-            -f sql/schema.sql
+            -f data/sql/schema.sql
 
       - name: Run integration tests
         env:

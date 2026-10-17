@@ -1,6 +1,7 @@
-
 from contextlib import nullcontext
 from datetime import datetime, timezone
+
+import pytest
 
 from fintrust import score
 from fintrust.score import calculate_risk_score
@@ -359,3 +360,219 @@ def test_duplicate_without_existing_risk_event_recovers(monkeypatch):
     assert scored[0]["duplicate_transaction"] is True
 
     assert len(persisted) == 1
+
+
+def test_conflicting_duplicate_is_skipped(monkeypatch):
+    transaction = base_transaction()
+    scored = []
+    persisted = []
+    dynamo_events = []
+
+    def raise_duplicate_conflict(**kwargs):
+        raise score.DuplicateTransactionConflict(
+            "Transaction ID already exists with different details"
+        )
+
+    monkeypatch.setattr(
+        score,
+        "get_db_connection",
+        lambda: nullcontext(object()),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "insert_transaction_if_missing",
+        raise_duplicate_conflict,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "mark_transaction_scored",
+        lambda **kwargs: scored.append(kwargs),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "mark_transaction_persisted",
+        lambda **kwargs: persisted.append(kwargs),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "put_risk_event",
+        lambda **kwargs: dynamo_events.append(kwargs),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError(
+            "Conflicting duplicate must not modify existing risk data"
+        )
+
+    monkeypatch.setattr(
+        score,
+        "update_transaction_risk",
+        fail_if_called,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "insert_postgres_risk_event",
+        fail_if_called,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "get_existing_risk_event",
+        fail_if_called,
+    )
+
+    result = score.process_transaction(
+        transaction=transaction,
+        upload_id="duplicate-test-upload",
+    )
+
+    assert result["transaction_id"] == transaction["transaction_id"]
+    assert result["duplicate_transaction"] is True
+    assert result["processing_status"] == "DUPLICATE_SKIPPED"
+    assert result["risk_score"] is None
+    assert result["risk_level"] is None
+    assert result["risk_event_id"] is None
+
+    assert len(scored) == 1
+    assert scored[0] == {
+        "upload_id": "duplicate-test-upload",
+        "transaction_id": transaction["transaction_id"],
+        "duplicate_transaction": True,
+    }
+
+    assert len(persisted) == 1
+    assert persisted[0] == {
+        "upload_id": "duplicate-test-upload",
+        "transaction_id": transaction["transaction_id"],
+    }
+
+    assert dynamo_events == []
+
+
+def test_conflicting_duplicate_without_upload_id_raises(monkeypatch):
+    transaction = base_transaction()
+
+    monkeypatch.setattr(
+        score,
+        "get_db_connection",
+        lambda: nullcontext(object()),
+    )
+
+    def raise_duplicate_conflict(**kwargs):
+        raise score.DuplicateTransactionConflict(
+            "Transaction ID already exists with different details"
+        )
+
+    monkeypatch.setattr(
+        score,
+        "insert_transaction_if_missing",
+        raise_duplicate_conflict,
+    )
+
+    with pytest.raises(score.DuplicateTransactionConflict):
+        score.process_transaction(
+            transaction=transaction,
+            upload_id=None,
+        )
+
+
+def test_scoring_marker_is_written_after_postgres_commit(monkeypatch):
+    transaction = base_transaction()
+    events = []
+
+    class FakeDatabaseContext:
+        def __enter__(self):
+            events.append("database_entered")
+            return object()
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            events.append("database_committed")
+            return False
+
+    monkeypatch.setattr(
+        score,
+        "get_db_connection",
+        lambda: FakeDatabaseContext(),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "insert_transaction_if_missing",
+        lambda **kwargs: True,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "get_existing_risk_event",
+        lambda **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "get_account_transactions",
+        lambda **kwargs: [transaction],
+    )
+
+    monkeypatch.setattr(
+        score,
+        "calculate_risk_score",
+        lambda **kwargs: (0, "LOW", []),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "update_transaction_risk",
+        lambda **kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "insert_postgres_risk_event",
+        lambda **kwargs: "test-risk-event-id",
+    )
+
+    def fake_mark_scored(**kwargs):
+        assert "database_committed" in events
+        events.append("scoring_marked")
+
+    monkeypatch.setattr(
+        score,
+        "mark_transaction_scored",
+        fake_mark_scored,
+    )
+
+    monkeypatch.setattr(
+        score,
+        "put_risk_event",
+        lambda **kwargs: events.append("dynamo_persisted"),
+    )
+
+    monkeypatch.setattr(
+        score,
+        "mark_transaction_persisted",
+        lambda **kwargs: events.append("persistence_marked"),
+    )
+
+    result = score.process_transaction(
+        transaction=transaction,
+        upload_id="commit-order-test",
+    )
+
+    assert result["duplicate_transaction"] is False
+
+    assert events.index("database_committed") < events.index(
+        "scoring_marked"
+    )
+
+    assert events.index("scoring_marked") < events.index(
+        "dynamo_persisted"
+    )
+
+    assert events.index("dynamo_persisted") < events.index(
+        "persistence_marked"
+    )

@@ -447,13 +447,17 @@ fintrust-risk-system/
 │   ├── unit/
 │   └── integration/
 │
-├── sql/
-│   ├── schema.sql
-│   ├── seed.sql
-│   ├── risk_report.sql
-│   ├── monthly_summary.sql
-│   ├── views.sql
-│   └── functions.sql
+├── data/
+│   ├── demo/
+│   ├── seed/
+│   ├── schemas
+│   └── sql/
+│       ├── schema.sql
+│       ├── seed.sql
+│       ├── risk_report.sql
+│       ├── monthly_summary.sql
+│       ├── views.sql
+│       └── functions.sql
 │
 ├── docs/
 ├── infrastructure/

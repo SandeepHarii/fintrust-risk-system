@@ -1,5 +1,4 @@
-﻿
-import json
+﻿import json
 import logging
 import os
 import uuid
@@ -26,6 +25,11 @@ HIGH_VELOCITY_POINTS = 40
 CROSS_BORDER_POINTS = 20
 MEDIUM_THRESHOLD = 30
 HIGH_THRESHOLD = 60
+
+
+class DuplicateTransactionConflict(ValueError):
+    """Raised when a transaction ID exists with different details."""
+
 
 ALERT_LAMBDA_NAME = os.getenv(
     "ALERT_LAMBDA_NAME",
@@ -127,7 +131,10 @@ def insert_transaction_if_missing(
         False: The transaction already existed with identical details.
 
     Raises:
-        ValueError: If the transaction ID exists with different details.
+        DuplicateTransactionConflict:
+            The transaction ID exists with different details.
+        ValueError:
+            The transaction could not be found after insertion.
     """
     with conn.cursor() as cursor:
         cursor.execute(
@@ -166,7 +173,6 @@ def insert_transaction_if_missing(
             },
         )
 
-        # Capture rowcount before executing the SELECT.
         inserted = cursor.rowcount == 1
 
         cursor.execute(
@@ -236,7 +242,7 @@ def insert_transaction_if_missing(
     }
 
     if existing_details != incoming_details:
-        raise ValueError(
+        raise DuplicateTransactionConflict(
             "Transaction ID already exists with different transaction details: "
             f"{transaction['transaction_id']}"
         )
@@ -517,118 +523,161 @@ def process_transaction(
     transaction_id = str(transaction["transaction_id"])
     account_id = str(transaction["account_id"])
 
-    with get_db_connection() as conn:
-        is_new_transaction = insert_transaction_if_missing(
-            conn=conn,
-            transaction=transaction,
-        )
-
-        # Check for an existing risk event before doing any scoring work.
-        existing_event = get_existing_risk_event(
-            conn=conn,
-            transaction_id=transaction_id,
-        )
-
-        if existing_event:
-            # Reuse the existing risk decision.
-            risk_event_id = existing_event["risk_event_id"]
-            risk_level = existing_event["risk_level"]
-            risk_reasons = existing_event["risk_reasons"]
-            alert_id = existing_event["alert_id"]
-            alert_status = existing_event["alert_status"]
-
-            # Reconstruct the original score from persisted reasons.
-            points = {
-                "HIGH_AMOUNT": HIGH_AMOUNT_POINTS,
-                "HIGH_VELOCITY": HIGH_VELOCITY_POINTS,
-                "CROSS_BORDER": CROSS_BORDER_POINTS,
-            }
-
-            risk_score = sum(
-                points.get(reason, 0)
-                for reason in risk_reasons
-            )
-
-            logger.info(
-                json.dumps(
-                    {
-                        "event": "existing_risk_event_reused",
-                        "transaction_id": transaction_id,
-                        "risk_event_id": risk_event_id,
-                        "duplicate_transaction": not is_new_transaction,
-                    },
-                    default=str,
-                )
-            )
-
-        else:
-            # No risk event exists, so calculate the score.
-            # This also handles recovery after a partially completed attempt.
-            account_transactions = get_account_transactions(
+    try:
+        with get_db_connection() as conn:
+            is_new_transaction = insert_transaction_if_missing(
                 conn=conn,
-                account_id=account_id,
+                transaction=transaction,
             )
 
-            risk_score, risk_level, risk_reasons = (
-                calculate_risk_score(
-                    transaction=transaction,
-                    account_transactions=account_transactions,
-                )
-            )
-
-            risk_event_id = None
-
-        # Record scoring independently of persistence.
-        # This remains upload-specific, including for duplicates.
-        if upload_id:
-            mark_transaction_scored(
-                upload_id=upload_id,
+            existing_event = get_existing_risk_event(
+                conn=conn,
                 transaction_id=transaction_id,
-                duplicate_transaction=not is_new_transaction,
             )
 
-        if existing_event:
-            # Recover an alert if an earlier attempt created the
-            # risk event but did not create its alert.
-            if risk_level == "HIGH" and not alert_id:
-                alert_id = create_alert(
+            if existing_event:
+                risk_event_id = existing_event["risk_event_id"]
+                risk_level = existing_event["risk_level"]
+                risk_reasons = existing_event["risk_reasons"]
+                alert_id = existing_event["alert_id"]
+                alert_status = existing_event["alert_status"]
+
+                points = {
+                    "HIGH_AMOUNT": HIGH_AMOUNT_POINTS,
+                    "HIGH_VELOCITY": HIGH_VELOCITY_POINTS,
+                    "CROSS_BORDER": CROSS_BORDER_POINTS,
+                }
+
+                risk_score = sum(
+                    points.get(reason, 0)
+                    for reason in risk_reasons
+                )
+
+                logger.info(
+                    json.dumps(
+                        {
+                            "event": "existing_risk_event_reused",
+                            "transaction_id": transaction_id,
+                            "risk_event_id": risk_event_id,
+                            "duplicate_transaction": (
+                                not is_new_transaction
+                            ),
+                        },
+                        default=str,
+                    )
+                )
+
+            else:
+                account_transactions = get_account_transactions(
+                    conn=conn,
+                    account_id=account_id,
+                )
+
+                risk_score, risk_level, risk_reasons = (
+                    calculate_risk_score(
+                        transaction=transaction,
+                        account_transactions=account_transactions,
+                    )
+                )
+
+                risk_event_id = None
+
+            if existing_event:
+                if risk_level == "HIGH" and not alert_id:
+                    alert_id = create_alert(
+                        conn=conn,
+                        transaction=transaction,
+                        risk_event_id=risk_event_id,
+                    )
+                    alert_status = "PENDING"
+
+            else:
+                update_transaction_risk(
+                    conn=conn,
+                    transaction_id=transaction_id,
+                    risk_level=risk_level,
+                )
+
+                risk_event_id = insert_postgres_risk_event(
                     conn=conn,
                     transaction=transaction,
-                    risk_event_id=risk_event_id,
+                    risk_level=risk_level,
+                    risk_reasons=risk_reasons,
                 )
-                alert_status = "PENDING"
 
-        else:
+                if risk_level == "HIGH":
+                    alert_id = create_alert(
+                        conn=conn,
+                        transaction=transaction,
+                        risk_event_id=risk_event_id,
+                    )
+                    alert_status = "PENDING"
+
             update_transaction_risk(
                 conn=conn,
                 transaction_id=transaction_id,
                 risk_level=risk_level,
             )
 
-            risk_event_id = insert_postgres_risk_event(
-                conn=conn,
-                transaction=transaction,
-                risk_level=risk_level,
-                risk_reasons=risk_reasons,
+    except DuplicateTransactionConflict:
+        if not upload_id:
+            raise
+
+        logger.warning(
+            json.dumps(
+                {
+                    "event": "duplicate_transaction_skipped",
+                    "transaction_id": transaction_id,
+                    "upload_id": upload_id,
+                }
             )
+        )
 
-            if risk_level == "HIGH":
-                alert_id = create_alert(
-                    conn=conn,
-                    transaction=transaction,
-                    risk_event_id=risk_event_id,
-                )
-                alert_status = "PENDING"
-
-        update_transaction_risk(
-            conn=conn,
+        # Record the duplicate outcome exactly once.
+        # Do not modify the existing PostgreSQL or DynamoDB risk data.
+        mark_transaction_scored(
+            upload_id=upload_id,
             transaction_id=transaction_id,
-            risk_level=risk_level,
+            duplicate_transaction=True,
+        )
+
+        mark_transaction_persisted(
+            upload_id=upload_id,
+            transaction_id=transaction_id,
+        )
+
+        result = {
+            "transaction_id": transaction_id,
+            "account_id": account_id,
+            "risk_score": None,
+            "risk_level": None,
+            "risk_reasons": [],
+            "risk_event_id": None,
+            "duplicate_transaction": True,
+            "processing_status": "DUPLICATE_SKIPPED",
+        }
+
+        logger.info(
+            json.dumps(
+                {
+                    "event": "transaction_processing_completed",
+                    **result,
+                },
+                default=str,
+            )
+        )
+
+        return result
+
+    # PostgreSQL has committed successfully at this point.
+    if upload_id:
+        mark_transaction_scored(
+            upload_id=upload_id,
+            transaction_id=transaction_id,
+            duplicate_transaction=not is_new_transaction,
         )
 
     # Persist the risk event to DynamoDB after PostgreSQL commits.
-    # This also repairs DynamoDB if a previous attempt failed after
-    # committing the PostgreSQL transaction.
     put_risk_event(
         account_id=account_id,
         transaction_id=transaction_id,
@@ -641,15 +690,13 @@ def process_transaction(
     )
 
     # Persistence is complete only after both database writes succeed.
-    # Duplicate transactions still need their own upload tracking markers.
     if upload_id:
         mark_transaction_persisted(
             upload_id=upload_id,
             transaction_id=transaction_id,
         )
 
-    # Alert delivery is separate from the persistence milestone.
-    # Never resend an alert already marked SENT or RESOLVED.
+    # Existing alert behaviour is deliberately unchanged for now.
     if (
         risk_level == "HIGH"
         and alert_id

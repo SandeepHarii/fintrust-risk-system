@@ -1,4 +1,8 @@
 
+import pytest
+
+from botocore.exceptions import ClientError
+
 from fintrust import dynamo
 
 
@@ -8,6 +12,23 @@ def _create_upload(upload_id: str) -> None:
         upload_id=upload_id,
         bucket="test-raw-bucket",
         object_key=f"uploads/{upload_id}.csv",
+    )
+
+
+def _transaction_conflict_error():
+    """Create a DynamoDB transaction-conflict error."""
+    return ClientError(
+        {
+            "Error": {
+                "Code": "TransactionCanceledException",
+                "Message": "Transaction cancelled",
+            },
+            "CancellationReasons": [
+                {"Code": "None"},
+                {"Code": "TransactionConflict"},
+            ],
+        },
+        "TransactWriteItems",
     )
 
 
@@ -455,3 +476,113 @@ def test_failed_upload_is_not_marked_completed(aws_resources):
     assert result is not None
     assert result["status"] == "FAILED"
     assert result["stages"]["results_persisted"] != "COMPLETED"
+
+
+# ---------------------------------------------------------------------
+# DynamoDB transaction-conflict retry tests
+# ---------------------------------------------------------------------
+
+def test_transaction_conflict_retries_and_succeeds(monkeypatch):
+    calls = []
+    sleeps = []
+
+    def mock_transact_write_items(**kwargs):
+        calls.append(kwargs)
+
+        if len(calls) == 1:
+            raise _transaction_conflict_error()
+
+        return {}
+
+    monkeypatch.setattr(
+        dynamo._dynamodb_client,
+        "transact_write_items",
+        mock_transact_write_items,
+    )
+
+    monkeypatch.setattr(
+        dynamo.time,
+        "sleep",
+        lambda delay: sleeps.append(delay),
+    )
+
+    dynamo._transact_write_with_retry(
+        [{"Put": {"TableName": "test"}}]
+    )
+
+    assert len(calls) == 2
+    assert sleeps == [dynamo.TRANSACTION_BASE_DELAY_SECONDS]
+
+
+def test_transaction_conflict_stops_after_max_attempts(monkeypatch):
+    calls = []
+    sleeps = []
+
+    def mock_transact_write_items(**kwargs):
+        calls.append(kwargs)
+        raise _transaction_conflict_error()
+
+    monkeypatch.setattr(
+        dynamo._dynamodb_client,
+        "transact_write_items",
+        mock_transact_write_items,
+    )
+
+    monkeypatch.setattr(
+        dynamo.time,
+        "sleep",
+        lambda delay: sleeps.append(delay),
+    )
+
+    with pytest.raises(ClientError):
+        dynamo._transact_write_with_retry(
+            [{"Put": {"TableName": "test"}}]
+        )
+
+    assert len(calls) == dynamo.TRANSACTION_MAX_ATTEMPTS
+    assert len(sleeps) == dynamo.TRANSACTION_MAX_ATTEMPTS - 1
+
+
+def test_non_conflict_transaction_cancellation_is_not_retried(
+    monkeypatch,
+):
+    calls = []
+    sleeps = []
+
+    error = ClientError(
+        {
+            "Error": {
+                "Code": "TransactionCanceledException",
+                "Message": "Transaction cancelled",
+            },
+            "CancellationReasons": [
+                {"Code": "ConditionalCheckFailed"},
+                {"Code": "None"},
+            ],
+        },
+        "TransactWriteItems",
+    )
+
+    def mock_transact_write_items(**kwargs):
+        calls.append(kwargs)
+        raise error
+
+    monkeypatch.setattr(
+        dynamo._dynamodb_client,
+        "transact_write_items",
+        mock_transact_write_items,
+    )
+
+    monkeypatch.setattr(
+        dynamo.time,
+        "sleep",
+        lambda delay: sleeps.append(delay),
+    )
+
+    with pytest.raises(ClientError):
+        dynamo._transact_write_with_retry(
+            [{"Put": {"TableName": "test"}}]
+        )
+
+    assert len(calls) == 1
+    assert sleeps == []

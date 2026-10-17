@@ -1,0 +1,1 @@
+{"statusCode": 200, "body": "{\"status\": \"SUCCESS\", \"report\": \"fintrust-risk-report\", \"row_count\": 0, \"csv_key\": \"monthly/2026-10/fintrust-risk-report.csv\", \"json_key\": \"monthly/2026-10/fintrust-risk-report.json\", \"bucket\": \"fintrust-prod-reports\"}"}
