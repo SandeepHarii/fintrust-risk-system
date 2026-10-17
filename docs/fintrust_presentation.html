@@ -635,14 +635,14 @@
         <h1>FinTrust Bank SA</h1>
         <p class="lede">
           A cloud-based transaction insights and risk monitoring system.
-          Built end-to-end on AWS — designed, deployed, tested, and
-          presented against the capstone brief.
+          Designed and implemented on AWS, bringing together cloud
+          architecture, SQL, Python development, and data governance.
         </p>
 
         <div class="pill-row">
-          <span class="pill">AWS Free Tier</span>
+          <span class="pill">AWS · eu-north-1</span>
           <span class="pill">Serverless · Event-driven</span>
-          <span class="pill">POPIA aligned</span>
+          <span class="pill">POPIA-informed design</span>
           <span class="pill">4 pillars · 1 system</span>
         </div>
 
@@ -661,39 +661,47 @@
 
         <p class="lede">
           FinTrust's operations team receives transaction exports that must
-          be processed consistently and reviewed for risk. The current flow
-          is manual, slow, and hard to audit.
+          be processed consistently and reviewed for risk. A manual process
+          makes validation, investigation, and reporting harder to manage.
         </p>
 
         <div class="grid-3">
           <div class="panel">
-            <p class="panel-eyebrow">Today</p>
-            <h3>Manual, error-prone</h3>
+            <p class="panel-eyebrow">The challenge</p>
+            <h3>Manual processing</h3>
             <p>
-              Flat files land on a shared drive. An analyst opens each CSV,
-              scans it by eye, and copies suspicious rows into a spreadsheet
-              for follow-up.
+              Transaction data arrives in flat files. Analysts need to
+              inspect records, identify suspicious activity, and organise
+              information for further investigation.
             </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">Business impact</p>
-            <h3>Slow, expensive, unauditable</h3>
+            <h3>Inconsistent visibility</h3>
             <p>
-              No structured audit trail. Risk decisions aren't reproducible.
-              High-risk patterns surface in hours instead of seconds, and
-              there's no way to prove which rule fired on which transaction.
+              Manual checks can be difficult to repeat and audit. Without
+              structured validation and recorded rule outcomes, it is harder
+              to trace why a transaction was flagged.
             </p>
           </div>
+
           <div class="panel highlight">
             <p class="panel-eyebrow">The brief</p>
-            <h3>Automate the flow end-to-end</h3>
+            <h3>Automate the transaction flow</h3>
             <p>
-              From ingestion to risk scoring to alerting — with a REST API,
-              scheduled reporting, structured logs, and POPIA-aligned
-              governance within the AWS Free Tier.
+              Build an event-driven system that validates transactions,
+              applies risk rules, stores results, exposes a secure REST API,
+              and produces alerts and monthly reports.
             </p>
           </div>
         </div>
+
+        <p class="sub" style="margin-top:22px;">
+          The goal is to support compliance and fraud teams with more
+          consistent information. The system supports investigation; it
+          does not replace analyst judgement.
+        </p>
       </div>
     </section>
 
@@ -704,10 +712,9 @@
         <h1 class="small">An event-driven serverless platform</h1>
 
         <p class="lede">
-          CSV uploads flow through validation, risk scoring, and multi-store
-          persistence, then surface to compliance via REST API, automated
-          alerts, and a scheduled S3 report. Every stage runs on AWS within
-          the Free Tier.
+          CSV uploads move through validation, asynchronous processing,
+          risk scoring, and persistence. Results are made available to
+          compliance through an API, dashboard, alerts, and reporting.
         </p>
 
         <div class="grid-4">
@@ -715,183 +722,298 @@
             <p class="panel-eyebrow">Ingest</p>
             <h3>CSV to S3</h3>
             <p>
-              Operations team uploads transaction CSVs. S3 triggers the
-              ingest Lambda; invalid rows are quarantined automatically.
+              The upload endpoint stores the incoming file in the S3 raw
+              area. The ingest Lambda validates and sanitises transaction
+              rows. Invalid records are sent to quarantine.
             </p>
           </div>
+
           <div class="panel">
-            <p class="panel-eyebrow">Score</p>
-            <h3>Rule-based risk engine</h3>
+            <p class="panel-eyebrow">Process</p>
+            <h3>Queue and score</h3>
             <p>
-              SQS queues transactions per account. The score Lambda applies
+              Valid records are placed on SQS FIFO. The score Lambda
+              processes queued records and applies the configured
               HIGH_AMOUNT, HIGH_VELOCITY, and CROSS_BORDER rules.
             </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">Store</p>
             <h3>RDS + DynamoDB</h3>
             <p>
-              RDS PostgreSQL holds the auditable ledger; DynamoDB stores
-              risk scores for fast lookup by account and timestamp.
+              RDS PostgreSQL stores the structured transaction ledger.
+              DynamoDB supports key-based access to risk scores and
+              transaction events.
             </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">Serve</p>
-            <h3>API + alerts + reports</h3>
+            <h3>API, alerts, reports</h3>
             <p>
-              API Gateway exposes data to compliance. SES emails on HIGH
-              risk. EventBridge schedules a monthly report to S3.
+              API Gateway exposes the query API. SES supports email alerts
+              for HIGH-risk results. EventBridge schedules the monthly
+              reporting Lambda.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:20px;">
+          <div class="panel highlight">
+            <p class="panel-eyebrow">Why asynchronous processing?</p>
+            <h3>Loose coupling</h3>
+            <p>
+              The upload request does not need to wait for every transaction
+              to be scored and stored. SQS separates ingestion from scoring,
+              allowing each stage to process work independently.
+            </p>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Important API behaviour</p>
+            <h3>HTTP 202 means accepted</h3>
+            <p>
+              The upload endpoint acknowledges that processing has been
+              accepted. The dashboard checks backend processing status.
+              It only shows completion after the records have been persisted.
             </p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 4 — KEY ACHIEVEMENTS -->
+    <!-- SLIDE 4 — AWS SERVICES EXPLAINED -->
+    <section class="slide" data-title="AWS services explained">
+      <div class="slide-inner">
+        <p class="eyebrow">03 · CLOUD ARCHITECTURE</p>
+        <h1 class="small">The AWS services behind the system</h1>
+
+        <p class="lede">
+          Each service has a specific responsibility. Together, they provide
+          storage, processing, communication, security, and monitoring.
+        </p>
+
+        <div class="grid-3">
+          <div class="panel">
+            <p class="panel-eyebrow">Storage and databases</p>
+            <h3>Where the data lives</h3>
+            <ul class="bullets">
+              <li><strong>Amazon S3:</strong> Object storage for uploaded CSVs, processed data, quarantine records, and reports.</li>
+              <li><strong>Amazon RDS:</strong> Managed PostgreSQL database for the structured transaction ledger.</li>
+              <li><strong>Amazon DynamoDB:</strong> NoSQL key-value/document database for fast access to risk data and events.</li>
+              <li><strong>S3 Glacier storage classes:</strong> Lower-cost archival storage options within S3, not a separate database.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Processing and integration</p>
+            <h3>How work moves</h3>
+            <ul class="bullets">
+              <li><strong>AWS Lambda:</strong> Runs application code when an event or request triggers it.</li>
+              <li><strong>Amazon SQS FIFO:</strong> A message queue that separates ingestion from scoring and supports ordered processing within message groups.</li>
+              <li><strong>Dead-letter queue:</strong> A separate SQS queue for messages that repeatedly fail processing.</li>
+              <li><strong>API Gateway:</strong> The controlled front door for the REST API.</li>
+              <li><strong>EventBridge:</strong> Routes events and triggers scheduled work, such as monthly reporting.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Security and operations</p>
+            <h3>How the system is controlled</h3>
+            <ul class="bullets">
+              <li><strong>IAM:</strong> Controls which users and services can perform specific actions.</li>
+              <li><strong>VPC:</strong> Provides the network boundary for private resources such as RDS.</li>
+              <li><strong>VPC endpoints:</strong> Provide private connectivity to supported AWS services without routing through a NAT Gateway.</li>
+              <li><strong>SSM Parameter Store:</strong> Stores application configuration and protected parameters.</li>
+              <li><strong>CloudWatch:</strong> Collects logs, metrics, and alarms.</li>
+              <li><strong>X-Ray:</strong> Helps trace requests across supported application components.</li>
+              <li><strong>SES:</strong> Sends email notifications.</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="sub" style="margin-top:20px;">
+          A useful distinction: API Gateway and Lambda provide the deployed
+          AWS query API. FastAPI, SQLAlchemy, and Python are application
+          technologies used in the project. They are not AWS services.
+        </p>
+      </div>
+    </section>
+
+    <!-- SLIDE 5 — KEY ACHIEVEMENTS -->
     <section class="slide" data-title="Key achievements">
       <div class="slide-inner">
-        <p class="eyebrow">03 · KEY ACHIEVEMENTS</p>
+        <p class="eyebrow">04 · KEY ACHIEVEMENTS</p>
         <h1 class="small">What the system delivers</h1>
 
         <div class="grid-4">
           <div class="metric">
             <p class="label">Pipeline</p>
             <p class="value">6</p>
-            <p class="note">Stages from CSV upload to alert, all serverless</p>
+            <p class="note">Main stages from upload through to alerting</p>
           </div>
+
           <div class="metric">
-            <p class="label">Services</p>
-            <p class="value">9</p>
-            <p class="note">AWS services integrated, all in Free Tier</p>
-          </div>
-          <div class="metric">
-            <p class="label">Rules</p>
+            <p class="label">Risk rules</p>
             <p class="value">3</p>
-            <p class="note">Explainable risk rules, unit tested at boundaries</p>
+            <p class="note">Explainable rules for transaction risk detection</p>
           </div>
+
           <div class="metric">
-            <p class="label">Modules</p>
+            <p class="label">Python modules</p>
             <p class="value">10</p>
-            <p class="note">Python package, structured and reusable</p>
+            <p class="note">Structured package covering the required responsibilities</p>
+          </div>
+
+          <div class="metric">
+            <p class="label">Core pillars</p>
+            <p class="value">4</p>
+            <p class="note">Cloud, SQL, Python, and Data Management</p>
           </div>
         </div>
 
-        <div class="grid-2" style="margin-top: 26px;">
+        <div class="grid-2" style="margin-top:26px;">
           <div class="panel success">
-            <p class="panel-eyebrow">Delivered</p>
-            <h3>Production-quality system</h3>
-            <ul class="bullets" style="margin-top: 10px;">
-              <li>End-to-end event-driven pipeline, fully deployed</li>
-              <li>REST API with pagination and API key auth</li>
-              <li>Automated SES alerts on HIGH risk transactions</li>
-              <li>Scheduled monthly report writing CSV + JSON to S3</li>
-              <li>CloudWatch metrics, alarms, and X-Ray tracing</li>
-              <li>Live compliance dashboard backed by the deployed API</li>
+            <p class="panel-eyebrow">System capabilities</p>
+            <h3>End-to-end functionality</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>CSV upload and ingestion workflow</li>
+              <li>Row-level validation and invalid-record quarantine</li>
+              <li>Asynchronous scoring through SQS FIFO</li>
+              <li>RDS PostgreSQL and DynamoDB persistence</li>
+              <li>REST API access to transaction information</li>
+              <li>Risk-based email alerting through SES</li>
+              <li>Monthly report generation to S3</li>
+              <li>Compliance dashboard using backend data</li>
             </ul>
           </div>
 
           <div class="panel">
-            <p class="panel-eyebrow">Engineering discipline</p>
-            <h3>Built to banking standards</h3>
-            <ul class="bullets" style="margin-top: 10px;">
-              <li>Least-privilege IAM roles per Lambda function</li>
-              <li>KMS-encrypted S3 buckets with lifecycle to Glacier</li>
-              <li>No hardcoded credentials — SSM Parameter Store only</li>
-              <li>Automated tests with pytest and moto</li>
-              <li>GitHub Actions CI on every push</li>
-              <li>POPIA classification, retention, and control register</li>
+            <p class="panel-eyebrow">Engineering and operations</p>
+            <h3>Supporting controls</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>IAM roles scoped to individual workloads</li>
+              <li>SSM Parameter Store for application configuration</li>
+              <li>Private RDS networking and security group restrictions</li>
+              <li>CloudWatch logs, metrics, and alarms</li>
+              <li>X-Ray tracing where configured</li>
+              <li>Automated tests using pytest and moto</li>
+              <li>GitHub Actions CI workflow</li>
+              <li>Technical and governance documentation</li>
             </ul>
           </div>
         </div>
+
+        <p class="sub" style="margin-top:20px;">
+          The exact deployed state of each control is demonstrated through
+          the AWS console, repository, test output, and supporting evidence.
+        </p>
       </div>
     </section>
 
-    <!-- SLIDE 5 — KEY FUNCTIONALITIES -->
+    <!-- SLIDE 6 — KEY FUNCTIONALITIES -->
     <section class="slide" data-title="Key functionalities">
       <div class="slide-inner">
-        <p class="eyebrow">04 · KEY FUNCTIONALITIES</p>
+        <p class="eyebrow">05 · KEY FUNCTIONALITIES</p>
         <h1 class="small">What the user can do</h1>
 
         <div class="grid-3">
           <div class="panel">
-            <p class="panel-eyebrow">Upload & ingest</p>
-            <h3>Live CSV upload</h3>
+            <p class="panel-eyebrow">Upload and ingest</p>
+            <h3>CSV upload</h3>
             <p>
-              Upload a CSV through the dashboard's drop zone. The ingest
-              Lambda validates each row, quarantines invalid records, and
-              persists valid rows to RDS and DynamoDB.
+              Upload a transaction CSV through the dashboard. The backend
+              accepts the request, stores the file, and starts asynchronous
+              processing.
             </p>
-            <span class="rubric-tag">C1 · C3 · C7</span>
+            <span class="rubric-tag">Cloud · Python</span>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Data quality</p>
+            <h3>Validation and quarantine</h3>
+            <p>
+              The ingestion process checks incoming records, sanitises
+              values, and separates invalid rows so that they can be
+              investigated or corrected.
+            </p>
+            <span class="rubric-tag">Python · Governance</span>
           </div>
 
           <div class="panel">
             <p class="panel-eyebrow">Risk scoring</p>
             <h3>Explainable classifications</h3>
             <p>
-              Every transaction is scored against three named rules and
-              classified LOW, MEDIUM, or HIGH. The rule that fired is
-              visible on every row — no black box.
+              Transactions are checked against three named rules. The
+              resulting classification and rule flags provide a traceable
+              explanation for the risk outcome.
             </p>
-            <span class="rubric-tag">C2 · C3 · C7</span>
+            <span class="rubric-tag">Python · SQL</span>
           </div>
 
           <div class="panel">
             <p class="panel-eyebrow">Compliance view</p>
             <h3>Live dashboard</h3>
             <p>
-              Summary cards, risk distribution, daily volume, and a
-              searchable ledger. Filter by risk level or rule flag. Click
-              any row for the full record.
+              Summary information, risk distribution, transaction volume,
+              and a searchable transaction ledger help compliance users
+              review the available data.
             </p>
-            <span class="rubric-tag">C7 · C8</span>
+            <span class="rubric-tag">API · Dashboard</span>
           </div>
 
           <div class="panel">
             <p class="panel-eyebrow">Alerting</p>
             <h3>Automated notifications</h3>
             <p>
-              When a HIGH risk transaction is scored, the alert Lambda
-              dispatches an SES email to compliance officers with the
-              transaction ID, account, amount, and rule that fired.
+              The alerting component sends an SES email when a transaction
+              meets the HIGH-risk notification condition, subject to the
+              configured email environment.
             </p>
-            <span class="rubric-tag">C1 · C7</span>
+            <span class="rubric-tag">Cloud · Python</span>
           </div>
 
           <div class="panel">
             <p class="panel-eyebrow">Reporting</p>
-            <h3>Monthly scheduled report</h3>
+            <h3>Monthly analytics</h3>
             <p>
-              EventBridge fires on the first of every month. The report
-              Lambda runs the CTE risk report and running-balance summary,
-              then writes both CSV and JSON to S3.
+              The reporting component uses SQL analytics and an EventBridge
+              schedule to generate monthly CSV and JSON report outputs in S3.
             </p>
-            <span class="rubric-tag">C2 · C7</span>
+            <span class="rubric-tag">SQL · Cloud</span>
           </div>
+        </div>
 
-          <div class="panel">
-            <p class="panel-eyebrow">Governance</p>
-            <h3>POPIA-aligned by design</h3>
-            <p>
-              Field-level classification, hot/warm/cold retention tiers,
-              and a risk register with named AWS controls. Retention
-              matches the FSCA 7-year requirement.
-            </p>
-            <span class="rubric-tag">C5 · C8</span>
+        <div class="panel highlight" style="margin-top:20px;">
+          <p class="panel-eyebrow">Initial risk rules</p>
+          <div class="grid-3">
+            <div>
+              <h3>HIGH_AMOUNT</h3>
+              <p>Transaction amount greater than R50,000.</p>
+            </div>
+            <div>
+              <h3>HIGH_VELOCITY</h3>
+              <p>More than 10 transactions within one hour.</p>
+            </div>
+            <div>
+              <h3>CROSS_BORDER</h3>
+              <p>Transaction meets the configured cross-border condition.</p>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 6 — FOUR PILLARS -->
+    <!-- SLIDE 7 — FOUR PILLARS -->
     <section class="slide" data-title="Four pillars">
       <div class="slide-inner">
-        <p class="eyebrow">05 · ARCHITECTURE</p>
+        <p class="eyebrow">06 · FOUR PILLARS</p>
         <h1 class="small">Four pillars, one coherent system</h1>
 
         <p class="lede">
-          The capstone tests all four learning streams. Strong work in one
-          doesn't substitute for engagement across all four — every pillar
-          is load-bearing in this system.
+          The capstone brings together all four learning streams.
+          Each pillar contributes a different part of the solution.
         </p>
 
         <div class="grid-4">
@@ -899,257 +1021,471 @@
             <p class="panel-eyebrow">Pillar 1 · Cloud</p>
             <h3>AWS Architecture</h3>
             <p>
-              Serverless, event-driven design across 9 services. Every
-              choice justified against SAA-C03: resilience, security,
-              performance, cost.
+              Serverless and event-driven architecture using services
+              selected for resilience, security, performance, and cost.
+              Includes IAM, VPC networking, queues, monitoring, and storage.
             </p>
-            <span class="rubric-tag">C1 · C4 · C7</span>
+            <span class="rubric-tag">Criterion 1 · 20 marks</span>
           </div>
 
           <div class="panel highlight">
             <p class="panel-eyebrow">Pillar 2 · SQL</p>
             <h3>Data Modelling</h3>
             <p>
-              3NF schema designed before code. Six SQL artefacts: DDL, seed,
-              CTE risk report, window-function running balance, view, and
-              stored procedure.
+              A relational schema designed around customers, accounts,
+              transactions, risk events, and alerts, with normalisation,
+              constraints, indexes, and analytical queries.
             </p>
-            <span class="rubric-tag">C2 · C7</span>
+            <span class="rubric-tag">Criterion 2 · 15 marks</span>
           </div>
 
           <div class="panel highlight">
             <p class="panel-eyebrow">Pillar 3 · Python</p>
             <h3>Code Quality</h3>
             <p>
-              Ten-module package covering config, database access,
-              validation, and the five Lambda handlers. Automated tests and
-              CI pipeline included.
+              A ten-module Python package covering configuration, database
+              access, DynamoDB, models, validation, ingestion, scoring,
+              alerting, querying, and reporting.
             </p>
-            <span class="rubric-tag">C3 · C4</span>
+            <span class="rubric-tag">Criterion 3 · 15 marks</span>
           </div>
 
           <div class="panel highlight">
             <p class="panel-eyebrow">Pillar 4 · Data</p>
             <h3>Governance Theory</h3>
             <p>
-              POPIA classification, quality framework, retention lifecycle,
-              migration strategy, and a risk register with named controls.
+              POPIA data classification, data quality, hot/warm/cold
+              lifecycle, migration strategy, and a governance risk register
+              with named controls.
             </p>
-            <span class="rubric-tag">C5 · C6 · C8</span>
+            <span class="rubric-tag">Criterion 5 · 10 marks</span>
           </div>
         </div>
 
-        <p class="sub" style="margin-top: 26px;">
-          No NAT Gateway. Lambdas reach RDS through a VPC private subnet
-          with a targeted security group rule — saves ~$32/month and
-          teaches proper least-access networking.
-        </p>
+        <div class="grid-2" style="margin-top:22px;">
+          <div class="panel">
+            <p class="panel-eyebrow">Networking decision</p>
+            <h3>Why no NAT Gateway?</h3>
+            <p>
+              The architecture excludes a NAT Gateway to avoid its hourly
+              and data-processing charges. RDS remains in private subnets.
+              Lambda functions that require database access connect through
+              the VPC with security-group rules restricted to the required
+              database port and destination.
+            </p>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Private AWS connectivity</p>
+            <h3>VPC endpoints</h3>
+            <p>
+              VPC endpoints provide private paths to supported AWS services,
+              such as S3, SSM, and SQS. They reduce the need for public
+              internet routing for those service interactions.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- SLIDE 7 — DATA FLOW -->
+    <!-- SLIDE 8 — DATA FLOW -->
     <section class="slide" data-title="Data flow">
       <div class="slide-inner">
-        <p class="eyebrow">06 · DATA FLOW</p>
+        <p class="eyebrow">07 · DATA FLOW</p>
         <h1 class="small">Upload to alert, in six stages</h1>
 
-        <div class="grid-3" style="margin-top: 22px; gap: 14px;">
+        <div class="grid-3" style="margin-top:22px; gap:14px;">
           <div class="panel">
             <p class="panel-eyebrow">01 · Upload</p>
-            <h3>S3 raw bucket</h3>
-            <p>KMS-encrypted. Lifecycle rule to Glacier after 7 years.</p>
+            <h3>API Gateway and S3</h3>
+            <p>
+              The upload endpoint accepts the request and the CSV is stored
+              in the raw S3 area for processing.
+            </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">02 · Ingest</p>
             <h3>ingest.py</h3>
-            <p>S3 trigger. Validates each row. Quarantines failures.</p>
+            <p>
+              The ingestion Lambda reads the file, validates and sanitises
+              rows, and sends invalid records to the quarantine area.
+            </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">03 · Queue</p>
             <h3>SQS FIFO</h3>
-            <p>Ordered per account. DLQ wired for resilience.</p>
+            <p>
+              Valid transactions are sent to the FIFO queue. Message groups
+              support ordered processing for the configured account key.
+              A DLQ supports failure isolation.
+            </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">04 · Score</p>
             <h3>score.py</h3>
-            <p>Applies three named rules. Produces LOW / MEDIUM / HIGH.</p>
+            <p>
+              The scoring Lambda consumes queued records and applies the
+              three configured risk rules to produce a risk result.
+            </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">05 · Store</p>
             <h3>RDS + DynamoDB</h3>
-            <p>Ledger in PostgreSQL. Risk scores in DynamoDB.</p>
+            <p>
+              Transaction records are persisted in PostgreSQL. Risk scores
+              and event information are written to DynamoDB for the
+              configured lookup patterns.
+            </p>
           </div>
+
           <div class="panel">
             <p class="panel-eyebrow">06 · Alert</p>
-            <h3>alert.py</h3>
-            <p>SES email to compliance on HIGH risk transactions.</p>
+            <h3>alert.py and SES</h3>
+            <p>
+              The alerting component evaluates the risk result and sends
+              the configured email notification for HIGH-risk activity.
+            </p>
           </div>
         </div>
 
-        <p class="sub" style="margin-top: 24px;">
-          Separately, <strong style="color:#fff;">query.py</strong> serves
-          the compliance API behind API Gateway, and
-          <strong style="color:#fff;">report.py</strong> writes a monthly
-          CSV and JSON report to S3 on an EventBridge schedule.
+        <div class="grid-2" style="margin-top:20px;">
+          <div class="panel">
+            <p class="panel-eyebrow">Query path</p>
+            <h3>API Gateway → query.py</h3>
+            <p>
+              API Gateway routes supported REST requests to the query
+              Lambda. The handler retrieves information from the database
+              layer and returns the API response.
+            </p>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Reporting path</p>
+            <h3>EventBridge → report.py → S3</h3>
+            <p>
+              EventBridge triggers the monthly reporting Lambda. The
+              reporting process runs the required SQL analytics and writes
+              the generated report files to S3.
+            </p>
+          </div>
+        </div>
+
+        <p class="sub" style="margin-top:20px;">
+          The SQS queue is the boundary between ingestion and scoring.
+          If a message repeatedly fails, the dead-letter queue provides
+          a place to isolate it for investigation and controlled recovery.
         </p>
       </div>
     </section>
 
-    <!-- SLIDE 8 — LIVE DEMO -->
+    <!-- SLIDE 9 — LIVE DEMO -->
     <section class="slide" data-title="Live demo">
       <div class="slide-inner">
-        <p class="eyebrow">07 · LIVE DEMO</p>
+        <p class="eyebrow">08 · LIVE DEMO</p>
         <h1 class="small">Running system</h1>
 
         <p class="lede">
-          The dashboard reads live data from API Gateway in eu-north-1.
-          Every number on screen is served by a real Lambda against real
-          RDS and DynamoDB tables.
+          The demonstration follows a transaction from CSV upload through
+          backend processing to the compliance dashboard and supporting
+          AWS evidence.
         </p>
 
         <div class="grid-4">
           <div class="metric">
-            <p class="label">Endpoint</p>
-            <p class="value mono" style="font-size: 15px; letter-spacing: 0; color: #4FA8F5; margin-top: 4px;">
+            <p class="label">Query endpoint</p>
+            <p class="value mono" style="font-size:15px; letter-spacing:0; color:#4FA8F5; margin-top:4px;">
               /prod/transactions
             </p>
             <p class="note">API Gateway · eu-north-1</p>
           </div>
+
           <div class="metric">
-            <p class="label">Handler</p>
-            <p class="value mono" style="font-size: 15px; letter-spacing: 0; color: #4FA8F5; margin-top: 4px;">
+            <p class="label">Query handler</p>
+            <p class="value mono" style="font-size:15px; letter-spacing:0; color:#4FA8F5; margin-top:4px;">
               query.py
             </p>
-            <p class="note">Lambda · RDS + DynamoDB</p>
+            <p class="note">Lambda · database access</p>
           </div>
+
           <div class="metric">
-            <p class="label">Upload path</p>
-            <p class="value mono" style="font-size: 15px; letter-spacing: 0; color: #4FA8F5; margin-top: 4px;">
+            <p class="label">Upload endpoint</p>
+            <p class="value mono" style="font-size:15px; letter-spacing:0; color:#4FA8F5; margin-top:4px;">
               POST /upload
             </p>
-            <p class="note">Async 202 · InvocationType=Event</p>
+            <p class="note">Asynchronous response · HTTP 202</p>
           </div>
+
           <div class="metric">
-            <p class="label">Pipeline</p>
-            <p class="value mono" style="font-size: 15px; letter-spacing: 0; color: #4FA8F5; margin-top: 4px;">
-              ingest → score
+            <p class="label">Processing path</p>
+            <p class="value mono" style="font-size:15px; letter-spacing:0; color:#4FA8F5; margin-top:4px;">
+              S3 → SQS
             </p>
-            <p class="note">S3 trigger → SQS → Lambda</p>
+            <p class="note">Ingestion → scoring</p>
           </div>
         </div>
 
-        <p class="sub" style="margin-top: 28px;">
-          Switch to the live dashboard. Upload a CSV, watch the row count
-          increase after refresh, and click any transaction row to inspect
-          the full record — including the exact rule flags that produced
-          the risk classification.
+        <div class="grid-2" style="margin-top:24px;">
+          <div class="panel success">
+            <p class="panel-eyebrow">Demo sequence</p>
+            <h3>Show the working flow</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>Open the dashboard and show the current transaction summary.</li>
+              <li>Upload a known-good CSV file.</li>
+              <li>Show the upload acknowledgement and processing status.</li>
+              <li>Show validation and quarantine information where applicable.</li>
+              <li>Show the backend processing stages and transaction counts.</li>
+              <li>Refresh the dashboard and inspect persisted transactions.</li>
+              <li>Open a transaction to show its risk classification and rule flags.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Technical evidence</p>
+            <h3>Prove what happened behind the UI</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>Show the S3 upload object and relevant processing output.</li>
+              <li>Show SQS queue activity and DLQ configuration.</li>
+              <li>Show the transaction record in RDS.</li>
+              <li>Show the corresponding DynamoDB risk/event record.</li>
+              <li>Show the relevant Lambda CloudWatch logs.</li>
+              <li>Show an SES alert or report output if available.</li>
+              <li>Show the API response and CI test evidence.</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="sub" style="margin-top:20px;">
+          Use test data only. Do not expose API keys, database credentials,
+          SSM parameter values, or real customer information during the demo.
+          Keep a known-good CSV and an invalid-row CSV ready as backups.
         </p>
       </div>
     </section>
 
-    <!-- SLIDE 9 — GOVERNANCE & COST -->
+    <!-- SLIDE 10 — GOVERNANCE & COST -->
     <section class="slide" data-title="Governance & cost">
       <div class="slide-inner">
-        <p class="eyebrow">08 · GOVERNANCE & COST</p>
-        <h1 class="small">Compliant, auditable, free</h1>
+        <p class="eyebrow">09 · GOVERNANCE & COST</p>
+        <h1 class="small">Governance, retention, and cost awareness</h1>
 
         <div class="grid-2">
           <div class="panel">
             <p class="panel-eyebrow">Data governance · POPIA</p>
-            <h3>Classification & lifecycle</h3>
-            <ul class="bullets" style="margin-top: 10px;">
-              <li><strong>Personal:</strong> customer_id, account_id, amount</li>
-              <li><strong>Operational:</strong> tx_timestamp, transaction_type</li>
-              <li><strong>Derived:</strong> risk_score, risk_flag</li>
-              <li><strong>Hot (12 mo):</strong> RDS PostgreSQL</li>
-              <li><strong>Warm (3 yr):</strong> S3 Parquet</li>
-              <li><strong>Cold (7 yr):</strong> S3 Glacier — FSCA requirement</li>
+            <h3>Classification and lifecycle</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li><strong>Personal information:</strong> customer identifiers and account-linked transaction details.</li>
+              <li><strong>Operational information:</strong> timestamps, transaction types, and processing status.</li>
+              <li><strong>Derived information:</strong> risk scores, rule flags, and risk events.</li>
+              <li><strong>Hot tier:</strong> RDS PostgreSQL for frequently accessed operational records.</li>
+              <li><strong>Warm tier:</strong> S3 storage for less frequently accessed records and analytical outputs.</li>
+              <li><strong>Cold tier:</strong> S3 Glacier storage classes for long-term archival where required.</li>
             </ul>
-            <span class="rubric-tag">C5</span>
+            <span class="rubric-tag">Criterion 5 · Governance</span>
           </div>
 
           <div class="panel">
-            <p class="panel-eyebrow">Named AWS controls</p>
-            <h3>Risk register</h3>
-            <ul class="bullets" style="margin-top: 10px;">
-              <li><strong>PII exposure</strong> — KMS CMK + S3 bucket policy</li>
-              <li><strong>Credential leak</strong> — Secrets Manager rotation</li>
-              <li><strong>Data loss</strong> — S3 versioning + RDS snapshots</li>
-              <li><strong>Over-permissioned roles</strong> — IAM least privilege per Lambda</li>
-              <li><strong>Unencrypted storage</strong> — KMS on all S3 buckets</li>
+            <p class="panel-eyebrow">Governance risk register</p>
+            <h3>Risks and AWS controls</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li><strong>Unauthorised data access:</strong> IAM least privilege, scoped roles, and restrictive resource policies.</li>
+              <li><strong>Credential exposure:</strong> SSM Parameter Store, IAM roles, and no hardcoded secrets.</li>
+              <li><strong>Data loss:</strong> backups, recovery procedures, and appropriate S3/RDS protection controls.</li>
+              <li><strong>Invalid data:</strong> ingestion validation, quarantine storage, and failure handling.</li>
+              <li><strong>Unprotected sensitive data:</strong> encryption in transit and at rest, with access restricted to authorised workloads.</li>
             </ul>
-            <span class="rubric-tag">C5 · C8</span>
+            <span class="rubric-tag">Criterion 5 · Criterion 6</span>
           </div>
         </div>
 
-        <div class="panel success" style="margin-top: 20px;">
-          <p class="panel-eyebrow">Free Tier alignment</p>
-          <h3 style="margin-bottom: 12px;">Service allocations — within the 12-month Free Tier</h3>
+        <div class="grid-2" style="margin-top:20px;">
+          <div class="panel">
+            <p class="panel-eyebrow">Migration strategy</p>
+            <h3>Legacy flat files to AWS</h3>
+            <p>
+              The brief asks for a migration strategy using the 7 Rs and
+              AWS Application Migration Service. For the transaction data
+              workflow, the design considers moving the legacy flat-file
+              process into managed AWS storage and event-driven ingestion.
+              The selected R-classification should be justified in the
+              migration document, with Rehost or Replatform considered
+              against the existing legacy environment.
+            </p>
+          </div>
 
-          <table class="tier-table">
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Free Tier</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>Lambda</td><td>1M req · 400K GB-s</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>API Gateway</td><td>1M calls</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>RDS db.t3.micro</td><td>750 hrs · 20 GB</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>DynamoDB</td><td>25 GB · 25 WCU/RCU</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>S3</td><td>5 GB · 20K GET · 2K PUT</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>SQS</td><td>1M requests</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>SES (sandbox)</td><td>3,000 msgs</td><td><span class="tag-safe">Safe</span></td></tr>
-              <tr><td>NAT Gateway</td><td>~ $32 / month</td><td><span class="tag-excluded">Excluded</span></td></tr>
-            </tbody>
-          </table>
+          <div class="panel">
+            <p class="panel-eyebrow">Retention and compliance</p>
+            <h3>Policy must be validated</h3>
+            <p>
+              The brief specifies hot data in RDS for 12 months, warm data
+              in S3 for 3 years, and cold archival in S3 Glacier for 7 years.
+              This is the proposed capstone lifecycle design. The final
+              retention period must be confirmed against applicable legal
+              and organisational requirements before being treated as a
+              production compliance policy.
+            </p>
+          </div>
+        </div>
 
-          <span class="rubric-tag">C1 · C4</span>
+        <div class="panel highlight" style="margin-top:20px;">
+          <p class="panel-eyebrow">Cost management</p>
+          <h3>Designed to minimise unnecessary AWS charges</h3>
+          <p>
+            The capstone architecture is designed around the programme's
+            Free Tier constraints. Lambda, API Gateway, SQS, DynamoDB, S3,
+            and other services have usage-based allowances or pricing.
+            RDS instance hours, storage, data transfer, monitoring, and
+            other usage can still incur charges. The account's Free Tier
+            eligibility, credits, region, and actual consumption must be
+            checked in Billing and Cost Explorer.
+          </p>
+          <p style="margin-top:10px;">
+            NAT Gateway is excluded because it introduces additional hourly
+            and data-processing costs. The project should not be described
+            as guaranteed free simply because it was designed for Free Tier.
+          </p>
         </div>
       </div>
     </section>
 
-    <!-- SLIDE 10 — CLOSE -->
+    <!-- SLIDE 11 — REQUIREMENTS AND RUBRIC -->
+    <section class="slide" data-title="Requirements coverage">
+      <div class="slide-inner">
+        <p class="eyebrow">10 · REQUIREMENTS COVERAGE</p>
+        <h1 class="small">How the project maps to the assessment</h1>
+
+        <p class="lede">
+          The rubric separates the build, presentation, and documentation
+          marks. The live presentation demonstrates the system, while the
+          repository and supporting evidence demonstrate the underlying work.
+        </p>
+
+        <div class="grid-3">
+          <div class="metric">
+            <p class="label">Build criteria</p>
+            <p class="value">70</p>
+            <p class="note">Architecture, SQL, Python, testing, and governance</p>
+          </div>
+
+          <div class="metric">
+            <p class="label">Presentation</p>
+            <p class="value">20</p>
+            <p class="note">Live demo and business/stakeholder presentation</p>
+          </div>
+
+          <div class="metric">
+            <p class="label">Documentation</p>
+            <p class="value">10</p>
+            <p class="note">Portfolio completeness and technical documentation</p>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:22px;">
+          <div class="panel">
+            <p class="panel-eyebrow">Build evidence · 70 marks</p>
+            <h3>What the repository must show</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li><strong>Cloud architecture · 20:</strong> architecture diagram, AWS implementation, IAM role matrix, networking, and service configuration.</li>
+              <li><strong>SQL and modelling · 15:</strong> 3NF ERD, schema.sql, seed.sql, risk_report.sql, monthly_summary.sql, views.sql, and a stored procedure or function.</li>
+              <li><strong>Python development · 15:</strong> complete ten-module fintrust package, pinned dependencies, and required application behaviour.</li>
+              <li><strong>Testing and CI/CD · 10:</strong> pytest, moto fixtures, test files, and GitHub Actions workflow.</li>
+              <li><strong>Governance · 10:</strong> POPIA classification, data quality framework, lifecycle policy, migration strategy, and three-risk register.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <p class="panel-eyebrow">Portfolio evidence · 10 marks</p>
+            <h3>Documentation and screenshots</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>Architecture diagram showing services, data flows, and security boundaries.</li>
+              <li>ERD showing entities, attributes, primary keys, and foreign keys.</li>
+              <li>API design document covering routes, methods, schemas, responses, and authentication.</li>
+              <li>Security plan and IAM role matrix.</li>
+              <li>Data lifecycle and POPIA compliance statement.</li>
+              <li>Risk register with probability, impact, and AWS controls.</li>
+              <li>README with deployment instructions understandable to a non-technical reader.</li>
+              <li>AWS, API, CloudWatch, and CI evidence screenshots.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="panel success" style="margin-top:20px;">
+          <p class="panel-eyebrow">Live presentation · 20 marks</p>
+          <h3>What the assessors need to see</h3>
+          <div class="grid-2">
+            <div>
+              <p>
+                <strong>Live demo and technical panel · 10 marks</strong><br />
+                Demonstrate CSV upload, processing, CloudWatch evidence,
+                API querying, and the generated risk report. Explain
+                technical decisions and failure handling using your own
+                architecture.
+              </p>
+            </div>
+            <div>
+              <p>
+                <strong>Business and stakeholder presentation · 10 marks</strong><br />
+                Explain the business problem, solution, value, architecture,
+                and project decisions clearly. Communicate professionally
+                and answer questions confidently.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p class="sub" style="margin-top:18px;">
+          This slide is a coverage guide, not a claim that every item is
+          automatically complete. The repository, deployed resources,
+          test results, and screenshots are the evidence for each item.
+        </p>
+      </div>
+    </section>
+
+    <!-- SLIDE 12 — CLOSE -->
     <section class="slide" data-title="Close">
       <div class="slide-inner">
-        <p class="eyebrow">09 · CLOSE</p>
+        <p class="eyebrow">11 · CLOSE</p>
         <h1 class="small">Thank you</h1>
 
         <p class="lede">
-          A complete, event-driven transaction insights and risk monitoring
-          system — designed, justified, built, tested, and deployed on AWS
-          within the Free Tier, with a live compliance dashboard on top.
+          FinTrust brings together cloud architecture, relational and
+          NoSQL data storage, Python development, risk scoring, and data
+          governance in one transaction insights and risk monitoring system.
         </p>
 
         <div class="grid-2">
           <div class="panel success">
-            <p class="panel-eyebrow">Delivered</p>
-            <h3>The full system, live</h3>
-            <ul class="bullets" style="margin-top: 10px;">
-              <li>Event-driven pipeline, deployed to eu-north-1</li>
-              <li>Rule-based risk engine with explainable output</li>
-              <li>REST API behind API Gateway with key auth</li>
-              <li>SES alerts, S3 reports, CloudWatch monitoring</li>
-              <li>Live dashboard reading real data from the deployed API</li>
+            <p class="panel-eyebrow">Delivered solution</p>
+            <h3>The system in summary</h3>
+            <ul class="bullets" style="margin-top:10px;">
+              <li>Event-driven transaction ingestion and validation</li>
+              <li>Asynchronous scoring through SQS FIFO</li>
+              <li>Structured transaction ledger in PostgreSQL</li>
+              <li>Risk and event data in DynamoDB</li>
+              <li>REST API and compliance dashboard</li>
+              <li>Automated alerting and monthly reporting components</li>
+              <li>Monitoring, security, and governance documentation</li>
             </ul>
           </div>
 
           <div class="panel">
             <p class="panel-eyebrow">Future iterations</p>
-            <h3>What comes next</h3>
-            <ul class="bullets" style="margin-top: 10px;">
+            <h3>Where the system could go next</h3>
+            <ul class="bullets" style="margin-top:10px;">
               <li>POST /flag and POST /resolve compliance workflows</li>
               <li>Pre-signed S3 URLs for direct browser uploads</li>
-              <li>Step Functions for multi-step batch orchestration</li>
-              <li>Machine learning layered on the rule engine</li>
-              <li>Real-time WebSocket push for live updates</li>
+              <li>Step Functions for more complex multi-step orchestration</li>
+              <li>Machine learning as an additional layer over the rule engine</li>
+              <li>WebSocket push for more immediate dashboard updates</li>
+              <li>Further resilience, recovery, and operational automation</li>
             </ul>
           </div>
         </div>
 
-        <p class="sub" style="margin-top: 32px; font-size: 13px;">
+        <p class="sub" style="margin-top:32px; font-size:13px;">
           Questions welcome.
         </p>
       </div>
@@ -1165,12 +1501,12 @@
 
     <div class="nav-controls">
       <button class="nav-button" id="prevBtn" type="button" aria-label="Previous slide">← Prev</button>
-      <span class="nav-counter" id="counter">1 / 10</span>
+      <span class="nav-counter" id="counter">1 / 12</span>
       <button class="nav-button" id="nextBtn" type="button" aria-label="Next slide">Next →</button>
       <button class="nav-button" id="gridBtn" type="button" aria-label="Slide overview">⊞</button>
     </div>
 
-    <div class="progress" id="progress" style="width: 10%;"></div>
+    <div class="progress" id="progress" style="width: 8.333%;"></div>
   </nav>
 </div>
 
@@ -1187,106 +1523,167 @@
 
 <script>
 (function () {
-  const slides = Array.from(document.querySelectorAll('.slide'))
-  const total = slides.length
-  let current = 0
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let current = 0;
 
-  const prevBtn = document.getElementById('prevBtn')
-  const nextBtn = document.getElementById('nextBtn')
-  const counter = document.getElementById('counter')
-  const progress = document.getElementById('progress')
-  const gridBtn = document.getElementById('gridBtn')
-  const overview = document.getElementById('overview')
-  const closeOverview = document.getElementById('closeOverview')
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+  const gridBtn = document.getElementById('gridBtn');
+  const overview = document.getElementById('overview');
+  const closeOverview = document.getElementById('closeOverview');
 
   slides.forEach((slide, i) => {
-    const card = document.createElement('button')
-    card.type = 'button'
-    card.className = 'overview-card'
-    card.innerHTML = `
-      <div class="num">${String(i + 1).padStart(2, '0')}</div>
-      <div class="title">${slide.dataset.title || 'Untitled'}</div>
-    `
-    card.addEventListener('click', () => {
-      goTo(i)
-      closeGrid()
-    })
-    overview.appendChild(card)
-  })
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'overview-card';
 
-  const cards = Array.from(document.querySelectorAll('.overview-card'))
+    const number = document.createElement('div');
+    number.className = 'num';
+    number.textContent = String(i + 1).padStart(2, '0');
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = slide.dataset.title || 'Untitled';
+
+    card.appendChild(number);
+    card.appendChild(title);
+
+    card.addEventListener('click', () => {
+      goTo(i);
+      closeGrid();
+    });
+
+    overview.appendChild(card);
+  });
+
+  const cards = Array.from(document.querySelectorAll('.overview-card'));
 
   function goTo(index, direction) {
-    if (index < 0 || index >= total || index === current) return
+    if (index < 0 || index >= total || index === current) return;
 
-    const prev = slides[current]
-    const next = slides[index]
-    const dir = direction || (index > current ? 1 : -1)
+    const previous = slides[current];
+    const next = slides[index];
+    const dir = direction || (index > current ? 1 : -1);
 
-    prev.classList.remove('active')
-    if (dir > 0) prev.classList.add('leaving-left')
+    previous.classList.remove('active');
 
-    setTimeout(() => prev.classList.remove('leaving-left'), 360)
+    if (dir > 0) {
+      previous.classList.add('leaving-left');
+    }
 
-    next.classList.add('active')
+    window.setTimeout(() => {
+      previous.classList.remove('leaving-left');
+    }, 360);
 
-    current = index
-    updateUI()
-    updateHash()
+    next.classList.add('active');
+
+    current = index;
+    updateUI();
+    updateHash();
   }
 
   function updateUI() {
-    counter.textContent = `${current + 1} / ${total}`
-    progress.style.width = `${((current + 1) / total) * 100}%`
-    prevBtn.disabled = current === 0
-    nextBtn.disabled = current === total - 1
-    cards.forEach((card, i) => card.classList.toggle('current', i === current))
+    counter.textContent = `${current + 1} / ${total}`;
+    progress.style.width = `${((current + 1) / total) * 100}%`;
+
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+
+    cards.forEach((card, i) => {
+      card.classList.toggle('current', i === current);
+    });
   }
 
   function updateHash() {
-    history.replaceState(null, '', `#${current + 1}`)
+    history.replaceState(null, '', `#${current + 1}`);
   }
 
-  function openGrid() { overview.classList.add('open') }
-  function closeGrid() { overview.classList.remove('open') }
-  function toggleGrid() { overview.classList.toggle('open') }
+  function openGrid() {
+    overview.classList.add('open');
+  }
 
-  prevBtn.addEventListener('click', () => goTo(current - 1, -1))
-  nextBtn.addEventListener('click', () => goTo(current + 1, 1))
-  gridBtn.addEventListener('click', toggleGrid)
-  closeOverview.addEventListener('click', closeGrid)
-  overview.addEventListener('click', (e) => { if (e.target === overview) closeGrid() })
+  function closeGrid() {
+    overview.classList.remove('open');
+  }
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
-      e.preventDefault(); goTo(current + 1, 1)
-    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-      e.preventDefault(); goTo(current - 1, -1)
-    } else if (e.key === 'Home') { e.preventDefault(); goTo(0, -1) }
-    else if (e.key === 'End') { e.preventDefault(); goTo(total - 1, 1) }
-    else if (e.key === 'Escape') { toggleGrid() }
-    else if (e.key === 'g' || e.key === 'G') { toggleGrid() }
-  })
+  function toggleGrid() {
+    overview.classList.toggle('open');
+  }
 
-  let touchStartX = 0
-  document.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX
-  }, { passive: true })
-  document.addEventListener('touchend', (e) => {
-    const dx = e.changedTouches[0].screenX - touchStartX
-    if (Math.abs(dx) < 50) return
-    if (dx < 0) goTo(current + 1, 1)
-    else goTo(current - 1, -1)
-  }, { passive: true })
+  prevBtn.addEventListener('click', () => goTo(current - 1, -1));
+  nextBtn.addEventListener('click', () => goTo(current + 1, 1));
+  gridBtn.addEventListener('click', toggleGrid);
+  closeOverview.addEventListener('click', closeGrid);
 
-  const hash = parseInt(window.location.hash.replace('#', ''), 10)
+  overview.addEventListener('click', (event) => {
+    if (event.target === overview) closeGrid();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (overview.classList.contains('open')) {
+        closeGrid();
+      }
+      return;
+    }
+
+    if (overview.classList.contains('open')) {
+      if (event.key === 'g' || event.key === 'G') {
+        toggleGrid();
+      }
+      return;
+    }
+
+    if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'PageDown') {
+      event.preventDefault();
+      goTo(current + 1, 1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+      event.preventDefault();
+      goTo(current - 1, -1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      goTo(0, -1);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      goTo(total - 1, 1);
+    } else if (event.key === 'g' || event.key === 'G') {
+      toggleGrid();
+    }
+  });
+
+  let touchStartX = 0;
+
+  document.addEventListener('touchstart', (event) => {
+    touchStartX = event.changedTouches[0].screenX;
+  }, { passive: true });
+
+  document.addEventListener('touchend', (event) => {
+    const deltaX = event.changedTouches[0].screenX - touchStartX;
+
+    if (Math.abs(deltaX) < 50) return;
+
+    if (deltaX < 0) {
+      goTo(current + 1, 1);
+    } else {
+      goTo(current - 1, -1);
+    }
+  }, { passive: true });
+
+  const hash = parseInt(window.location.hash.replace('#', ''), 10);
+
   if (!Number.isNaN(hash) && hash >= 1 && hash <= total) {
-    slides.forEach((s, i) => s.classList.toggle('active', i === hash - 1))
-    current = hash - 1
+    slides.forEach((slide, i) => {
+      slide.classList.toggle('active', i === hash - 1);
+    });
+
+    current = hash - 1;
   }
 
-  updateUI()
-})()
+  updateUI();
+})();
 </script>
 </body>
 </html>

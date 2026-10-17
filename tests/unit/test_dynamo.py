@@ -1,3 +1,4 @@
+
 from fintrust import dynamo
 
 
@@ -137,7 +138,9 @@ def test_create_upload_tracking_initial_stages(aws_resources):
     assert result["valid_records"] == 0
     assert result["quarantined_records"] == 0
     assert result["queued_records"] == 0
+    assert result["scored_records"] == 0
     assert result["completed_records"] == 0
+    assert result["duplicate_records"] == 0
 
 
 def test_set_upload_validation_results(aws_resources):
@@ -228,6 +231,42 @@ def test_mark_transaction_persisted_increments_once(aws_resources):
     assert duplicate_result is False
     assert result is not None
     assert result["completed_records"] == 1
+
+
+def test_mark_duplicate_transaction_scored_increments_once(aws_resources):
+    upload_id = "UPLOAD-009"
+
+    _create_upload(upload_id)
+    dynamo.mark_ingestion_started(upload_id)
+
+    dynamo.set_upload_validation_results(
+        upload_id=upload_id,
+        total_records=1,
+        valid_records=1,
+        quarantined_records=0,
+    )
+
+    dynamo.mark_upload_queued(upload_id, 1)
+
+    first_result = dynamo.mark_transaction_scored(
+        upload_id,
+        "TX-001",
+        duplicate_transaction=True,
+    )
+
+    second_result = dynamo.mark_transaction_scored(
+        upload_id,
+        "TX-001",
+        duplicate_transaction=True,
+    )
+
+    result = dynamo.get_upload_tracking(upload_id)
+
+    assert first_result is True
+    assert second_result is False
+    assert result is not None
+    assert result["scored_records"] == 1
+    assert result["duplicate_records"] == 1
 
 
 def test_upload_completes_when_all_transactions_are_persisted(aws_resources):

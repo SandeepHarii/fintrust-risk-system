@@ -1,4 +1,3 @@
-
 import io
 import json
 
@@ -87,8 +86,121 @@ def test_send_transaction_to_queue(monkeypatch):
     message_body = json.loads(message["MessageBody"])
 
     assert message_body["transaction"] == transaction
+    assert "upload_id" not in message_body
     assert "risk_level" not in message_body
     assert "risk_reasons" not in message_body
+
+
+def test_send_transaction_to_queue_uses_upload_scoped_deduplication(
+    monkeypatch,
+):
+    transaction = base_transaction()
+    upload_id = "upload-001"
+    sent_messages = []
+
+    def fake_send_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"MessageId": "test-message-id"}
+
+    monkeypatch.setattr(
+        ingest._sqs,
+        "send_message",
+        fake_send_message,
+    )
+
+    ingest.send_transaction_to_queue(
+        transaction=transaction,
+        upload_id=upload_id,
+    )
+
+    assert len(sent_messages) == 1
+
+    message = sent_messages[0]
+
+    assert message["MessageDeduplicationId"] == (
+        f"{upload_id}:{transaction['transaction_id']}"
+    )
+
+    message_body = json.loads(message["MessageBody"])
+
+    assert message_body["transaction"] == transaction
+    assert message_body["upload_id"] == upload_id
+
+
+def test_same_transaction_in_different_uploads_has_different_deduplication_ids(
+    monkeypatch,
+):
+    transaction = base_transaction()
+    sent_messages = []
+
+    def fake_send_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"MessageId": "test-message-id"}
+
+    monkeypatch.setattr(
+        ingest._sqs,
+        "send_message",
+        fake_send_message,
+    )
+
+    ingest.send_transaction_to_queue(
+        transaction=transaction,
+        upload_id="upload-001",
+    )
+
+    ingest.send_transaction_to_queue(
+        transaction=transaction,
+        upload_id="upload-002",
+    )
+
+    assert len(sent_messages) == 2
+
+    first_id = sent_messages[0]["MessageDeduplicationId"]
+    second_id = sent_messages[1]["MessageDeduplicationId"]
+
+    assert first_id != second_id
+
+    assert first_id == (
+        f"upload-001:{transaction['transaction_id']}"
+    )
+
+    assert second_id == (
+        f"upload-002:{transaction['transaction_id']}"
+    )
+
+
+def test_same_transaction_within_same_upload_has_same_deduplication_id(
+    monkeypatch,
+):
+    transaction = base_transaction()
+    sent_messages = []
+
+    def fake_send_message(**kwargs):
+        sent_messages.append(kwargs)
+        return {"MessageId": "test-message-id"}
+
+    monkeypatch.setattr(
+        ingest._sqs,
+        "send_message",
+        fake_send_message,
+    )
+
+    ingest.send_transaction_to_queue(
+        transaction=transaction,
+        upload_id="upload-001",
+    )
+
+    ingest.send_transaction_to_queue(
+        transaction=transaction,
+        upload_id="upload-001",
+    )
+
+    assert len(sent_messages) == 2
+
+    first_id = sent_messages[0]["MessageDeduplicationId"]
+    second_id = sent_messages[1]["MessageDeduplicationId"]
+
+    assert first_id == second_id
 
 
 def test_process_valid_transaction_only_queues_transaction(monkeypatch):

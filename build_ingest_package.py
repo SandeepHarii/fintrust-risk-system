@@ -19,6 +19,7 @@ DEPENDENCY_DIRS = [
     "s3transfer",
     "urllib3",
     "pyarrow",
+    "pycountry",
 ]
 
 METADATA_DIRS = [
@@ -29,6 +30,7 @@ METADATA_DIRS = [
     "s3transfer-0.19.2.dist-info",
     "urllib3-2.8.0.dist-info",
     "pyarrow-20.0.0.dist-info",
+    "pycountry-24.6.1.dist-info",
 ]
 
 IGNORED_NAMES = {
@@ -174,6 +176,7 @@ with ZipFile(OUTPUT_ZIP, "r") as archive:
         "boto3/__init__.py",
         "botocore/__init__.py",
         "six.py",
+        "pycountry/__init__.py",
     ]
 
     for name in required_files:
@@ -246,6 +249,7 @@ print(f"Total files: {len(names)}")
 print(f"PyArrow native extensions: {len(native_extensions)}")
 print("Current ingest.py: verified")
 print("Current validators.py: verified")
+print("pycountry: verified")
 print("Python 3.12 x86_64 compatibility: verified")
 print("ZIP integrity: passed")
 print("Unwanted files: none")

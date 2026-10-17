@@ -2352,18 +2352,28 @@ function App() {
         }
 
         if (status === 'COMPLETED') {
-          if (!completionNotified) {
-            completionNotified = true
+  if (!completionNotified) {
+    completionNotified = true
 
-            notify(
-              'Processing completed',
-              'All six processing stages have completed successfully.',
-              'success',
-            )
-          }
+    const duplicateCount = Number(progress?.duplicate_records ?? 0)
 
-          return
-        }
+    notify(
+      'Processing completed',
+      'All six processing stages have completed successfully.',
+      'success',
+    )
+
+    if (Number.isFinite(duplicateCount) && duplicateCount > 0) {
+      toastQueueRef.current.push({
+        title: 'Duplicate transactions detected',
+        message: `${formatNumber(duplicateCount)} transactions were already processed. Existing records were reused, preventing duplicate entries and unnecessary risk calculations.`,
+        type: 'success',
+      })
+    }
+  }
+
+  return
+}
 
         // Show the latest completed stage immediately.
         // No notification queue or waiting behind older toasts.

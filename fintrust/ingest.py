@@ -154,6 +154,15 @@ def send_transaction_to_queue(
     account_id = str(transaction["account_id"])
     transaction_id = str(transaction["transaction_id"])
 
+    # Scope FIFO deduplication to the upload.
+    # This allows the same transaction to be re-uploaded in a new upload,
+    # while still preventing duplicates within the same upload.
+    deduplication_id = (
+        f"{upload_id}:{transaction_id}"
+        if upload_id
+        else transaction_id
+    )
+
     # Risk scoring is performed downstream by the scoring Lambda.
     message = {
         "transaction": transaction,
@@ -169,7 +178,7 @@ def send_transaction_to_queue(
             default=str,
         ),
         MessageGroupId=account_id,
-        MessageDeduplicationId=transaction_id,
+        MessageDeduplicationId=deduplication_id,
     )
 
     logger.info(
@@ -179,6 +188,7 @@ def send_transaction_to_queue(
                 "transaction_id": transaction_id,
                 "account_id": account_id,
                 "upload_id": upload_id,
+                "deduplication_id": deduplication_id,
                 "queue_url": TRANSACTION_QUEUE_URL,
                 "message_id": response.get("MessageId"),
             },

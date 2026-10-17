@@ -1,3 +1,4 @@
+
 import json
 from contextlib import ExitStack, nullcontext
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ class FakeCursor:
     def __init__(self, existing_row):
         self.existing_row = existing_row
         self.executed = []
+        self.rowcount = 0
 
     def __enter__(self):
         return self
@@ -214,6 +216,7 @@ def test_upload_transaction_is_marked_as_persisted(
     mocks["mark_transaction_scored"].assert_called_once_with(
         upload_id="upload-123",
         transaction_id=transaction["transaction_id"],
+        duplicate_transaction=False,
     )
 
     mocks["mark_transaction_persisted"].assert_called_once_with(

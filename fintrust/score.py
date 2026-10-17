@@ -118,8 +118,17 @@ def calculate_risk_score(
 def insert_transaction_if_missing(
     conn: Any,
     transaction: dict[str, Any],
-) -> None:
-    """Insert a transaction or verify an existing transaction is identical."""
+) -> bool:
+    """
+    Insert a transaction or verify an existing transaction is identical.
+
+    Returns:
+        True: A new transaction was inserted.
+        False: The transaction already existed with identical details.
+
+    Raises:
+        ValueError: If the transaction ID exists with different details.
+    """
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -156,6 +165,9 @@ def insert_transaction_if_missing(
                 "destination_country": transaction["destination_country"],
             },
         )
+
+        # Capture rowcount before executing the SELECT.
+        inserted = cursor.rowcount == 1
 
         cursor.execute(
             """
@@ -228,6 +240,8 @@ def insert_transaction_if_missing(
             "Transaction ID already exists with different transaction details: "
             f"{transaction['transaction_id']}"
         )
+
+    return inserted
 
 
 def get_account_transactions(
@@ -500,30 +514,23 @@ def process_transaction(
     alert_id = None
     alert_status = None
 
+    transaction_id = str(transaction["transaction_id"])
+    account_id = str(transaction["account_id"])
+
     with get_db_connection() as conn:
-        insert_transaction_if_missing(
+        is_new_transaction = insert_transaction_if_missing(
             conn=conn,
             transaction=transaction,
         )
 
-        account_transactions = get_account_transactions(
-            conn=conn,
-            account_id=str(transaction["account_id"]),
-        )
-
-        risk_score, calculated_level, calculated_reasons = (
-            calculate_risk_score(
-                transaction=transaction,
-                account_transactions=account_transactions,
-            )
-        )
-
+        # Check for an existing risk event before doing any scoring work.
         existing_event = get_existing_risk_event(
             conn=conn,
-            transaction_id=str(transaction["transaction_id"]),
+            transaction_id=transaction_id,
         )
 
         if existing_event:
+            # Reuse the existing risk decision.
             risk_event_id = existing_event["risk_event_id"]
             risk_level = existing_event["risk_level"]
             risk_reasons = existing_event["risk_reasons"]
@@ -542,17 +549,42 @@ def process_transaction(
                 for reason in risk_reasons
             )
 
+            logger.info(
+                json.dumps(
+                    {
+                        "event": "existing_risk_event_reused",
+                        "transaction_id": transaction_id,
+                        "risk_event_id": risk_event_id,
+                        "duplicate_transaction": not is_new_transaction,
+                    },
+                    default=str,
+                )
+            )
+
         else:
-            risk_level = calculated_level
-            risk_reasons = calculated_reasons
+            # No risk event exists, so calculate the score.
+            # This also handles recovery after a partially completed attempt.
+            account_transactions = get_account_transactions(
+                conn=conn,
+                account_id=account_id,
+            )
+
+            risk_score, risk_level, risk_reasons = (
+                calculate_risk_score(
+                    transaction=transaction,
+                    account_transactions=account_transactions,
+                )
+            )
+
             risk_event_id = None
 
-        # The final risk decision has been determined.
         # Record scoring independently of persistence.
+        # This remains upload-specific, including for duplicates.
         if upload_id:
             mark_transaction_scored(
                 upload_id=upload_id,
-                transaction_id=str(transaction["transaction_id"]),
+                transaction_id=transaction_id,
+                duplicate_transaction=not is_new_transaction,
             )
 
         if existing_event:
@@ -569,7 +601,7 @@ def process_transaction(
         else:
             update_transaction_risk(
                 conn=conn,
-                transaction_id=str(transaction["transaction_id"]),
+                transaction_id=transaction_id,
                 risk_level=risk_level,
             )
 
@@ -590,14 +622,16 @@ def process_transaction(
 
         update_transaction_risk(
             conn=conn,
-            transaction_id=str(transaction["transaction_id"]),
+            transaction_id=transaction_id,
             risk_level=risk_level,
         )
 
     # Persist the risk event to DynamoDB after PostgreSQL commits.
+    # This also repairs DynamoDB if a previous attempt failed after
+    # committing the PostgreSQL transaction.
     put_risk_event(
-        account_id=str(transaction["account_id"]),
-        transaction_id=str(transaction["transaction_id"]),
+        account_id=account_id,
+        transaction_id=transaction_id,
         transaction_timestamp=str(transaction["tx_date"]),
         risk_event={
             "risk_score": risk_score,
@@ -607,10 +641,11 @@ def process_transaction(
     )
 
     # Persistence is complete only after both database writes succeed.
+    # Duplicate transactions still need their own upload tracking markers.
     if upload_id:
         mark_transaction_persisted(
             upload_id=upload_id,
-            transaction_id=str(transaction["transaction_id"]),
+            transaction_id=transaction_id,
         )
 
     # Alert delivery is separate from the persistence milestone.
@@ -642,7 +677,7 @@ def process_transaction(
                     {
                         "event": "alert_processing_failed",
                         "alert_id": alert_id,
-                        "transaction_id": transaction["transaction_id"],
+                        "transaction_id": transaction_id,
                     },
                     default=str,
                 )
@@ -658,12 +693,13 @@ def process_transaction(
             raise
 
     result = {
-        "transaction_id": str(transaction["transaction_id"]),
-        "account_id": str(transaction["account_id"]),
+        "transaction_id": transaction_id,
+        "account_id": account_id,
         "risk_score": risk_score,
         "risk_level": risk_level,
         "risk_reasons": risk_reasons,
         "risk_event_id": risk_event_id,
+        "duplicate_transaction": not is_new_transaction,
     }
 
     if alert_id:

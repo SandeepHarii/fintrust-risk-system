@@ -1,4 +1,3 @@
-
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -181,6 +180,7 @@ def create_upload_tracking(
         "queued_records": 0,
         "scored_records": 0,
         "completed_records": 0,
+        "duplicate_records": 0,
         "created_at": now,
         "updated_at": now,
     }
@@ -591,11 +591,13 @@ def mark_upload_queued(
 def mark_transaction_scored(
     upload_id: str,
     transaction_id: str,
+    duplicate_transaction: bool = False,
 ) -> bool:
     """
     Record a completed risk assessment exactly once.
 
-    The marker and scored_records increment are atomic.
+    The marker, scored_records increment, and duplicate_records increment
+    are atomic. Repeated processing cannot increment either counter twice.
     """
     if not upload_id:
         raise ValueError("upload_id is required.")
@@ -609,6 +611,7 @@ def mark_transaction_scored(
         "upload_id": upload_id,
         "record_type": f"SCORE#{transaction_id}",
         "transaction_id": transaction_id,
+        "duplicate_transaction": duplicate_transaction,
         "scored_at": now,
     }
 
@@ -635,13 +638,16 @@ def mark_transaction_scored(
                             }
                         ),
                         "UpdateExpression": (
-                            "SET updated_at = :updated_at "
-                            "ADD scored_records :one"
+                            "SET #status = if_not_exists(#status, :processing), "
+                            "updated_at = :updated_at "
+                            "ADD scored_records :one, "
+                            "duplicate_records :duplicate_increment"
                         ),
                         "ConditionExpression": (
                             "attribute_exists(upload_id) "
                             "AND record_type = :summary "
-                            "AND #status <> :failed"
+                            "AND (attribute_not_exists(#status) "
+                            "OR #status <> :failed)"
                         ),
                         "ExpressionAttributeNames": {
                             "#status": "status",
@@ -650,8 +656,12 @@ def mark_transaction_scored(
                             {
                                 ":updated_at": now,
                                 ":one": 1,
+                                ":duplicate_increment": (
+                                    1 if duplicate_transaction else 0
+                                ),
                                 ":summary": "SUMMARY",
                                 ":failed": "FAILED",
+                                ":processing": "PROCESSING",
                             }
                         ),
                     }
@@ -734,13 +744,15 @@ def mark_transaction_persisted(
                             }
                         ),
                         "UpdateExpression": (
-                            "SET updated_at = :updated_at "
+                            "SET #status = if_not_exists(#status, :processing), "
+                            "updated_at = :updated_at "
                             "ADD completed_records :one"
                         ),
                         "ConditionExpression": (
                             "attribute_exists(upload_id) "
                             "AND record_type = :summary "
-                            "AND #status <> :failed"
+                            "AND (attribute_not_exists(#status) "
+                            "OR #status <> :failed)"
                         ),
                         "ExpressionAttributeNames": {
                             "#status": "status",
@@ -751,6 +763,7 @@ def mark_transaction_persisted(
                                 ":one": 1,
                                 ":summary": "SUMMARY",
                                 ":failed": "FAILED",
+                                ":processing": "PROCESSING",
                             }
                         ),
                     }
