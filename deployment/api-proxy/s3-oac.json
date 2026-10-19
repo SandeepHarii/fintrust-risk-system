@@ -1,0 +1,7 @@
+{
+  "Name": "fintrust-demo-s3-oac",
+  "Description": "Private access from CloudFront to FinTrust demo website",
+  "SigningProtocol": "sigv4",
+  "SigningBehavior": "always",
+  "OriginAccessControlOriginType": "s3"
+}

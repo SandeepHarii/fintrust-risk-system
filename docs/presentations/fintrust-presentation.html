@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FinTrust · Capstone Presentation</title>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --navy: #0A1626;
+  --navy-2: #0F2036;
+  --ink: #EAF1F9;
+  --muted: #8FA3BC;
+  --dim: #6B7E96;
+  --border: rgb(255 255 255 / 10%);
+  --border-strong: rgb(255 255 255 / 22%);
+  --primary: #4FA8F5;
+  --primary-deep: #0A60A8;
+  --cyan: #00D4E4;
+  --high: #FF6B6B;
+  --medium: #F0B849;
+  --low: #3ECFA5;
+  --surface: rgb(255 255 255 / 4%);
+  --surface-2: rgb(255 255 255 / 7%);
+  --pad-x: clamp(28px, 4vw, 64px);
+  --pad-y: clamp(24px, 3vh, 38px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--navy);
+  color: var(--ink);
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgb(79 168 245 / 14%), transparent 60%),
+    radial-gradient(900px 500px at 100% 5%, rgb(0 212 228 / 8%), transparent 55%),
+    radial-gradient(800px 500px at 50% 120%, rgb(62 207 165 / 5%), transparent 60%);
+  pointer-events: none;
+}
+
+.deck {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: var(--pad-y) var(--pad-x);
+  opacity: 0;
+  transform: translateX(40px);
+  transition:
+    opacity 340ms ease,
+    transform 340ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  pointer-events: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #40536b transparent;
+}
+
+.slide.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.slide.leaving-left {
+  transform: translateX(-40px);
+}
+
+.slide-inner {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(38px, 4vw, 54px);
+  font-weight: 800;
+  letter-spacing: -1.4px;
+  line-height: 1.1;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+h1.small {
+  font-size: clamp(32px, 3.2vw, 44px);
+  letter-spacing: -1px;
+  line-height: 1.12;
+}
+
+h2 {
+  margin: 0 0 14px;
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(21px, 2vw, 27px);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #fff;
+  line-height: 1.2;
+}
+
+h3 {
+  margin: 0 0 8px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.1px;
+  line-height: 1.3;
+}
+
+.lede {
+  margin: 0 0 20px;
+  max-width: 1100px;
+  color: #C7D5E5;
+  font-size: clamp(15px, 1.15vw, 17px);
+  line-height: 1.5;
+}
+
+.sub {
+  margin: 0;
+  max-width: 1100px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+code, .mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  letter-spacing: -0.2px;
+}
+
+code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 7%);
+  color: #D8E8FB;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 0 0 24px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: #CDDCEC;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 0 3px rgb(0 212 228 / 15%);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.panel {
+  min-width: 0;
+  padding: 17px 19px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.panel.highlight {
+  background: linear-gradient(180deg, rgb(79 168 245 / 10%), rgb(79 168 245 / 3%));
+  border-color: rgb(79 168 245 / 25%);
+}
+
+.panel.success {
+  background: linear-gradient(180deg, rgb(62 207 165 / 10%), rgb(62 207 165 / 3%));
+  border-color: rgb(62 207 165 / 25%);
+}
+
+.panel-eyebrow {
+  margin: 0 0 8px;
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.panel.success .panel-eyebrow { color: var(--low); }
+
+.panel p {
+  margin: 0;
+  color: #C5D5E8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.panel p + p { margin-top: 9px; }
+
+.metric {
+  min-width: 0;
+  padding: 17px 18px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.metric .label {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.metric .value {
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  color: #fff;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.metric .value.high { color: var(--high); }
+.metric .value.medium { color: var(--medium); }
+.metric .value.low { color: var(--low); }
+
+.metric .note {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+ul.bullets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+ul.bullets li {
+  position: relative;
+  padding-left: 19px;
+  color: #D6E1EE;
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+ul.bullets li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--cyan);
+  box-shadow: 0 0 0 3px rgb(0 212 228 / 12%);
+}
+
+ul.bullets li strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.panel.success ul.bullets li::before {
+  background: var(--low);
+  box-shadow: 0 0 0 3px rgb(62 207 165 / 12%);
+}
+
+.tier-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.tier-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.tier-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: #DCE6F2;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.tier-table td:first-child {
+  font-family: 'DM Sans', sans-serif;
+  color: #fff;
+  font-weight: 600;
+}
+
+.tag-safe,
+.tag-excluded {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.tag-safe { background: rgb(62 207 165 / 15%); color: #6FE6BF; }
+.tag-excluded { background: rgb(255 107 107 / 15%); color: #FF9A9A; }
+
+.navbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px var(--pad-x);
+  border-top: 1px solid var(--border);
+  background: rgb(10 22 38 / 92%);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  color: #fff;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 10px;
+  background: #081321;
+  border: 1px solid #24384e;
+  color: #27b8e8;
+  font-family: 'Manrope', sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
+}
+
+.brand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: #C7D5E5;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.nav-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: #fff;
+}
+
+.nav-button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.nav-counter {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 5px;
+  min-width: 56px;
+  text-align: center;
+}
+
+.progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cyan), var(--primary));
+  transition: width 340ms ease;
+}
+
+.overview {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 45px clamp(20px, 5vw, 64px);
+  background: rgb(6 14 26 / 96%);
+  backdrop-filter: blur(12px);
+  overflow-y: auto;
+}
+
+.overview.open { display: grid; }
+
+.overview-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.overview-head h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.4px;
+}
+
+.overview-close {
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: #C7D5E5;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.overview-card {
+  padding: 15px 16px 17px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.overview-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.overview-card .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.overview-card .title {
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.overview-card.current {
+  border-color: var(--primary);
+  background: linear-gradient(180deg, rgb(79 168 245 / 12%), rgb(79 168 245 / 3%));
+}
+
+.hint {
+  position: fixed;
+  bottom: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgb(15 32 54 / 92%);
+  backdrop-filter: blur(10px);
+  color: #B8C8DB;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  animation: hint-fade 7s ease forwards;
+  pointer-events: none;
+}
+
+.hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: #fff;
+}
+
+@keyframes hint-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Shorter screens: retain readable text while tightening spacing. */
+@media (max-height: 850px) {
+  :root {
+    --pad-y: 20px;
+  }
+
+  .slide-inner { padding-bottom: 12px; }
+  .grid-2, .grid-3, .grid-4 {
+    gap: 11px;
+    margin-top: 8px;
+  }
+
+  .panel { padding: 14px 16px; }
+  ul.bullets { gap: 6px; }
+  .lede { margin-bottom: 14px; }
+  .panel p { line-height: 1.42; }
+}
+
+/* Smaller laptop screens */
+@media (max-height: 700px) and (min-width: 641px) {
+  :root {
+    --pad-y: 14px;
+    --pad-x: 28px;
+  }
+
+  h1.small { font-size: clamp(29px, 3vw, 38px); }
+  .eyebrow { margin-bottom: 7px; }
+  .lede { font-size: 14px; margin-bottom: 11px; }
+  .panel { padding: 11px 13px; }
+  .panel p { font-size: 12px; }
+  ul.bullets li { font-size: 11.5px; }
+  .grid-2, .grid-3, .grid-4 { gap: 9px; margin-top: 7px; }
+}
+
+@media (max-width: 1100px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  h1, h1.small { font-size: 30px; }
+  .lede { font-size: 14px; }
+  .panel p { font-size: 13px; }
+  ul.bullets li { font-size: 12px; }
+
+  .slide { padding: 18px; }
+  .hint { display: none; }
+  .navbar { gap: 6px; padding: 8px 12px; }
+  .brand-text { max-width: 100px; }
+  .nav-controls { gap: 4px; }
+  .nav-button { padding: 0 7px; }
+  .nav-counter { min-width: 43px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide { transition: opacity 120ms ease; transform: none !important; }
+}
+</style>
+</head>
+
+<body>
+<div class="deck">
+<div class="stage" id="stage">
+
+<!-- SLIDE 1 — TITLE -->
+<section class="slide active" data-title="Title">
+<div class="slide-inner">
+<p class="eyebrow">CLOUD TO SOLUTIONS ACCELERATOR · CAPSTONE</p>
+<h1>FinTrust</h1>
+<p class="lede">
+A cloud-based transaction insights and risk monitoring system
+designed around a banking scenario. It automates transaction
+ingestion, validation, and risk detection while giving compliance
+teams visibility into potentially suspicious activity.
+</p>
+<div class="pill-row">
+<span class="pill">AWS · eu-north-1</span>
+<span class="pill">Serverless · Event-driven</span>
+<span class="pill">POPIA-informed design</span>
+<span class="pill">Cloud · SQL · Python · Governance</span>
+</div>
+<p class="sub">
+Presented by <strong style="color:#fff;">Sandeep Hari</strong>
+· 19–20 October 2026
+</p>
+</div>
+</section>
+
+<!-- SLIDE 2 — BUSINESS PROBLEM -->
+<section class="slide" data-title="Business problem">
+<div class="slide-inner">
+<p class="eyebrow">01 · BUSINESS PROBLEM</p>
+<h1 class="small">Manual transaction review doesn't scale</h1>
+<p class="lede">
+In a banking environment, transaction exports need to be processed
+consistently and reviewed for potential risk. When this depends
+heavily on manual checks, validation, investigation, and reporting
+become harder to manage.
+</p>
+<div class="grid-3">
+<div class="panel">
+<p class="panel-eyebrow">The challenge</p>
+<h3>Manual processing</h3>
+<p>
+Transaction data arrives in flat files. Analysts need to
+inspect records, identify suspicious activity, and organise
+information for further investigation.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Business impact</p>
+<h3>Inconsistent visibility</h3>
+<p>
+Manual checks can be difficult to repeat and audit. Without
+structured validation and recorded rule outcomes, it is harder
+to trace why a transaction was flagged.
+</p>
+</div>
+<div class="panel highlight">
+<p class="panel-eyebrow">The requirement</p>
+<h3>Automate the transaction flow</h3>
+<p>
+Build an event-driven system that validates transactions,
+applies risk rules, stores results, exposes a secure REST API,
+and produces alerts and monthly reports.
+</p>
+</div>
+</div>
+<p class="sub" style="margin-top:16px;">
+The goal is to support compliance and fraud teams with more
+consistent information. The system supports investigation; it
+does not replace analyst judgement.
+</p>
+</div>
+</section>
+
+<!-- SLIDE 3 — SOLUTION -->
+<section class="slide" data-title="Solution">
+<div class="slide-inner">
+<p class="eyebrow">02 · SOLUTION</p>
+<h1 class="small">An event-driven serverless platform</h1>
+<p class="lede">
+CSV uploads move through validation, asynchronous processing,
+risk scoring, and persistence. Results are made available to
+compliance through an API, dashboard, alerts, and reporting.
+</p>
+
+<div class="grid-4">
+<div class="panel">
+<p class="panel-eyebrow">Ingest</p>
+<h3>CSV to S3</h3>
+<p>
+The upload endpoint stores the incoming file in the S3 raw
+area. The ingest Lambda validates and sanitises transaction
+rows. Invalid records are sent to quarantine.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Process</p>
+<h3>Queue and score</h3>
+<p>
+Step Functions orchestrates the upload workflow and tracks
+its execution. Valid records are placed on SQS FIFO, which
+decouples ingestion from scoring. The score Lambda applies
+the configured HIGH_AMOUNT, HIGH_VELOCITY, and CROSS_BORDER rules.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Store</p>
+<h3>RDS + DynamoDB</h3>
+<p>
+RDS PostgreSQL stores the structured transaction ledger.
+DynamoDB supports key-based access to risk scores and
+transaction events.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Serve</p>
+<h3>API, alerts, reports</h3>
+<p>
+API Gateway exposes the query API. SES supports email alerts
+for HIGH-risk results. EventBridge schedules the monthly
+reporting Lambda.
+</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel highlight">
+<p class="panel-eyebrow">Why asynchronous processing?</p>
+<h3>Loose coupling</h3>
+<p>
+The upload request does not need to wait for every transaction
+to be scored and stored. Step Functions coordinates the upload
+workflow, while SQS separates ingestion from scoring. Each stage
+can process work independently, helping absorb bursts of incoming
+transactions without requiring the upload endpoint to perform
+all processing at once.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Important API behaviour</p>
+<h3>HTTP 202 means accepted</h3>
+<p>
+The upload endpoint acknowledges that processing has been
+accepted. The dashboard checks backend processing status.
+It only shows completion after the records have been persisted.
+This separates a successful upload acknowledgement from
+successful completion of the processing workflow.
+</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- SLIDE 4 — AWS SERVICES EXPLAINED -->
+<section class="slide" data-title="AWS services explained">
+<div class="slide-inner">
+<p class="eyebrow">03 · CLOUD ARCHITECTURE</p>
+<h1 class="small">The AWS services behind the system</h1>
+<p class="lede">
+Each service has a specific responsibility. Together, they provide
+storage, processing, communication, security, and monitoring.
+</p>
+
+<div class="grid-3">
+<div class="panel">
+<p class="panel-eyebrow">Storage and databases</p>
+<h3>Where the data lives</h3>
+<ul class="bullets">
+<li><strong>Amazon S3:</strong> Object storage for uploaded CSVs, processed data, quarantine records, and reports.</li>
+<li><strong>Amazon RDS:</strong> Managed PostgreSQL database for the structured transaction ledger.</li>
+<li><strong>Amazon DynamoDB:</strong> NoSQL database for fast key-based access to risk data and events.</li>
+<li><strong>S3 Glacier storage classes:</strong> Lower-cost archival options within S3 for data that needs longer-term storage.</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Processing and integration</p>
+<h3>How work moves</h3>
+<ul class="bullets">
+<li><strong>AWS Lambda:</strong> Runs application code when an event or request triggers it.</li>
+<li><strong>AWS Step Functions:</strong> Orchestrates the upload workflow and tracks execution across processing steps.</li>
+<li><strong>Amazon SQS FIFO:</strong> Separates ingestion from scoring and supports ordered processing within message groups.</li>
+<li><strong>Dead-letter queue:</strong> Isolates messages that repeatedly fail processing so they can be inspected.</li>
+<li><strong>API Gateway:</strong> The controlled front door for the REST API, including API key and usage-plan controls.</li>
+<li><strong>EventBridge:</strong> Triggers scheduled work, including monthly reporting.</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Security and operations</p>
+<h3>How the system is controlled</h3>
+<ul class="bullets">
+<li><strong>IAM:</strong> Controls which users and services can perform specific actions.</li>
+<li><strong>VPC:</strong> Provides the network boundary for private resources such as RDS.</li>
+<li><strong>VPC endpoints:</strong> Provide private connectivity to supported AWS services without routing through a NAT Gateway.</li>
+<li><strong>SSM Parameter Store:</strong> Stores application configuration and protected parameters.</li>
+<li><strong>CloudWatch:</strong> Collects logs, metrics, and alarms.</li>
+<li><strong>X-Ray:</strong> Helps trace requests across supported application components.</li>
+<li><strong>SES:</strong> Sends email notifications.</li>
+</ul>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel highlight">
+<p class="panel-eyebrow">Relational database</p>
+<h3>Why RDS PostgreSQL?</h3>
+<p>
+PostgreSQL stores the structured transaction ledger and its
+relationships. Customers, accounts, transactions, risk events,
+and alerts can be queried together using SQL. Relational
+constraints help maintain data integrity, while SQL supports
+reporting, investigation, and audit queries.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">NoSQL database</p>
+<h3>Why DynamoDB?</h3>
+<p>
+DynamoDB complements PostgreSQL by supporting fast key-based
+access to risk scores and transaction event information.
+It is suited to predictable lookup patterns where an item
+can be retrieved directly using its key, rather than
+performing relational joins across the transaction ledger.
+</p>
+</div>
+</div>
+
+<p class="sub" style="margin-top:14px;">
+A useful distinction: API Gateway and Lambda provide the deployed
+AWS query API. FastAPI, SQLAlchemy, and Python are application
+technologies used in the project. PostgreSQL is the database
+engine managed through Amazon RDS.
+</p>
+</div>
+</section>
+
+<!-- SLIDE 5 — KEY ACHIEVEMENTS -->
+<section class="slide" data-title="Key achievements">
+<div class="slide-inner">
+<p class="eyebrow">04 · KEY ACHIEVEMENTS</p>
+<h1 class="small">What the system delivers</h1>
+<div class="grid-4">
+<div class="metric">
+<p class="label">Pipeline</p>
+<p class="value">6</p>
+<p class="note">Main stages from upload through to alerting</p>
+</div>
+<div class="metric">
+<p class="label">Risk rules</p>
+<p class="value">3</p>
+<p class="note">Explainable rules for transaction risk detection</p>
+</div>
+<div class="metric">
+<p class="label">Python modules</p>
+<p class="value">10</p>
+<p class="note">A structured package covering core responsibilities</p>
+</div>
+<div class="metric">
+<p class="label">Core pillars</p>
+<p class="value">4</p>
+<p class="note">Cloud, SQL, Python, and Data Management & Governance</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:16px;">
+<div class="panel success">
+<p class="panel-eyebrow">System capabilities</p>
+<h3>End-to-end functionality</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li>CSV upload and ingestion workflow</li>
+<li>Row-level validation and invalid-record quarantine</li>
+<li>Upload workflow orchestration through Step Functions</li>
+<li>Asynchronous scoring through SQS FIFO</li>
+<li>RDS PostgreSQL and DynamoDB persistence</li>
+<li>REST API access to transaction information</li>
+<li>Risk-based email alerting through SES</li>
+<li>Monthly report generation to S3</li>
+<li>Compliance dashboard using backend data</li>
+</ul>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Engineering and operations</p>
+<h3>Supporting controls</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li>IAM roles scoped to individual workloads</li>
+<li>SSM Parameter Store for application configuration</li>
+<li>Private RDS networking and security group restrictions</li>
+<li>CloudWatch logs, metrics, and alarms</li>
+<li>X-Ray tracing where configured</li>
+<li>Automated tests using pytest and moto</li>
+<li>GitHub Actions CI workflow</li>
+<li>Technical and governance documentation</li>
+</ul>
+</div>
+</div>
+
+<p class="sub" style="margin-top:14px;">
+The repository, deployed AWS resources, automated test results,
+and supporting documentation provide a traceable view of how
+the system's capabilities are implemented.
+</p>
+</div>
+</section>
+
+<!-- SLIDE 6 — KEY FUNCTIONALITIES -->
+<section class="slide" data-title="Key functionalities">
+<div class="slide-inner">
+<p class="eyebrow">05 · KEY FUNCTIONALITIES</p>
+<h1 class="small">What the user can do</h1>
+<div class="grid-3">
+<div class="panel">
+<p class="panel-eyebrow">Upload and ingest</p>
+<h3>CSV upload</h3>
+<p>
+Upload a transaction CSV through the dashboard. The backend
+accepts the request, stores the file, and starts asynchronous
+processing.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Data quality</p>
+<h3>Validation and quarantine</h3>
+<p>
+The ingestion process checks incoming records, validates
+required fields and data types, sanitises values, and separates
+invalid rows so they can be investigated or corrected.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Risk scoring</p>
+<h3>Explainable classifications</h3>
+<p>
+Transactions are checked against three named rules. The
+resulting classification and rule flags provide a traceable
+explanation for the risk outcome.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Compliance view</p>
+<h3>Live dashboard</h3>
+<p>
+The Overview screen provides a system-level summary, including
+transaction activity and risk distribution. Risk Monitoring
+provides a more detailed view of transactions and their
+classifications for investigation.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Alerting</p>
+<h3>Automated notifications</h3>
+<p>
+The alerting component sends an SES email when a transaction
+meets the HIGH-risk notification condition, subject to the
+configured email environment.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Reporting</p>
+<h3>Monthly analytics</h3>
+<p>
+The reporting component uses SQL analytics and an EventBridge
+schedule to generate monthly CSV and JSON report outputs in S3.
+These reports provide a consolidated view of transaction
+activity and risk information over the reporting period.
+</p>
+</div>
+</div>
+
+<div class="panel highlight" style="margin-top:14px;">
+<p class="panel-eyebrow">Initial risk rules</p>
+<div class="grid-3">
+<div>
+<h3>HIGH_AMOUNT</h3>
+<p>Transaction amount greater than R50,000.</p>
+</div>
+<div>
+<h3>HIGH_VELOCITY</h3>
+<p>More than 10 transactions within one hour.</p>
+</div>
+<div>
+<h3>CROSS_BORDER</h3>
+<p>Transaction meets the configured cross-border condition.</p>
+</div>
+</div>
+</div>
+
+<div class="panel" style="margin-top:12px;">
+<p class="panel-eyebrow">Example risk scenario</p>
+<h3>A R51,000 transaction</h3>
+<p>
+Consider a customer making a R51,000 purchase. Because the
+transaction exceeds the configured R50,000 threshold, the
+HIGH_AMOUNT rule is triggered. FinTrust records the rule outcome
+alongside the transaction, making the reason for the flag
+visible to compliance users. The transaction is highlighted
+for investigation rather than automatically treated as fraud.
+</p>
+</div>
+</div>
+</section>
+
+<!-- SLIDE 7 — FOUR PILLARS -->
+<section class="slide" data-title="Four pillars">
+<div class="slide-inner">
+<p class="eyebrow">06 · FOUR PILLARS</p>
+<h1 class="small">Four pillars, one coherent system</h1>
+<p class="lede">
+The project brings together four learning streams. Each pillar
+contributes a different part of the solution, from the cloud
+infrastructure to the way transaction data is managed.
+</p>
+<div class="grid-4">
+<div class="panel highlight">
+<p class="panel-eyebrow">Pillar 1 · Cloud</p>
+<h3>AWS Architecture</h3>
+<p>
+Serverless and event-driven architecture using AWS services
+selected for resilience, security, performance, and cost.
+Includes IAM, VPC networking, queues, workflow orchestration,
+monitoring, storage, and API integration.
+</p>
+</div>
+<div class="panel highlight">
+<p class="panel-eyebrow">Pillar 2 · SQL</p>
+<h3>Data Modelling</h3>
+<p>
+A relational schema designed around customers, accounts,
+transactions, risk events, and alerts. Includes normalisation,
+constraints, indexes, relationships, and analytical queries.
+</p>
+</div>
+<div class="panel highlight">
+<p class="panel-eyebrow">Pillar 3 · Python</p>
+<h3>Application Development</h3>
+<p>
+A ten-module Python package covering configuration, database
+access, DynamoDB, models, validation, ingestion, scoring,
+alerting, querying, and reporting.
+</p>
+</div>
+<div class="panel highlight">
+<p class="panel-eyebrow">Pillar 4 · Data Management & Governance</p>
+<h3>Data Governance</h3>
+<p>
+POPIA-informed data classification, data quality, lifecycle
+management, migration strategy, and a governance risk register
+with proposed controls. This pillar addresses how information
+is collected, validated, protected, retained, and used
+responsibly throughout the system.
+</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel">
+<p class="panel-eyebrow">Networking decision</p>
+<h3>Why no NAT Gateway?</h3>
+<p>
+The architecture excludes a NAT Gateway to avoid its hourly
+and data-processing charges. RDS remains in private subnets.
+Lambda functions that require database access connect through
+the VPC with security-group rules restricted to the required
+database port and destination.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Private AWS connectivity</p>
+<h3>VPC endpoints</h3>
+<p>
+VPC endpoints provide private paths to supported AWS services,
+including S3, SSM, and SQS. This reduces the need for public
+internet routing for those service interactions.
+</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- SLIDE 8 — DATA FLOW -->
+<section class="slide" data-title="Data flow">
+<div class="slide-inner">
+<p class="eyebrow">07 · DATA FLOW</p>
+<h1 class="small">Upload to alert, in six stages</h1>
+
+<div class="grid-3" style="margin-top:14px;">
+<div class="panel">
+<p class="panel-eyebrow">01 · Upload</p>
+<h3>API Gateway, S3 and Step Functions</h3>
+<p>
+The upload endpoint accepts the request and stores the CSV in
+the raw S3 area. Step Functions coordinates the upload workflow
+and tracks its execution. The API responds with HTTP 202 Accepted
+while processing continues.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">02 · Ingest</p>
+<h3>ingest.py</h3>
+<p>
+The ingestion Lambda reads the file, validates and sanitises
+rows, and sends invalid records to the quarantine area.
+Valid records continue to the processing queue.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">03 · Queue</p>
+<h3>SQS FIFO</h3>
+<p>
+Valid transactions are sent to the FIFO queue. Message groups
+support ordered processing for the configured account key.
+A dead-letter queue provides a failure-isolation path for
+messages that repeatedly fail processing.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">04 · Score</p>
+<h3>score.py</h3>
+<p>
+The scoring Lambda consumes queued records and applies the
+three configured risk rules to produce a risk result.
+The result includes the applicable rule flags, supporting
+traceability of the classification.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">05 · Store</p>
+<h3>RDS + DynamoDB</h3>
+<p>
+Transaction records are persisted in PostgreSQL. Risk scores
+and event information are written to DynamoDB for the
+configured key-based lookup patterns. The two databases
+serve complementary access requirements.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">06 · Alert</p>
+<h3>alert.py and SES</h3>
+<p>
+The alerting component evaluates the risk result and sends
+the configured email notification for HIGH-risk activity.
+This gives the relevant users an additional notification
+channel alongside the dashboard.
+</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel">
+<p class="panel-eyebrow">Query path</p>
+<h3>API Gateway → query.py</h3>
+<p>
+API Gateway routes supported REST requests to the query
+Lambda. The handler retrieves information from the database
+layer and returns the API response to the dashboard or API
+consumer. This path supports transaction lookup and the
+dashboard's data views.
+</p>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Reporting path</p>
+<h3>EventBridge → report.py → S3</h3>
+<p>
+EventBridge triggers the monthly reporting Lambda. The
+reporting process runs the required SQL analytics and writes
+the generated report files to S3. This separates scheduled
+reporting from the real-time transaction processing path.
+</p>
+</div>
+</div>
+
+<p class="sub" style="margin-top:14px;">
+Step Functions coordinates the upload workflow. SQS is the
+boundary between ingestion and scoring. Messages that repeatedly
+fail can be isolated through the configured dead-letter queue
+for investigation and controlled recovery.
+</p>
+</div>
+</section>
+
+<!-- SLIDE 9 — SYSTEM OPERATION -->
+<section class="slide" data-title="System operation">
+<div class="slide-inner">
+<p class="eyebrow">08 · SYSTEM OPERATION</p>
+<h1 class="small">The system in operation</h1>
+<p class="lede">
+FinTrust connects the transaction-processing backend with a
+compliance dashboard, providing visibility from file ingestion
+through to persisted transaction results, risk classifications,
+notifications, and reports.
+</p>
+
+<div class="grid-4">
+<div class="metric">
+<p class="label">Query endpoint</p>
+<p class="value mono" style="font-size:16px;letter-spacing:0;color:#4FA8F5;margin-top:4px;">
+/prod/transactions
+</p>
+<p class="note">API Gateway · eu-north-1</p>
+</div>
+<div class="metric">
+<p class="label">Query handler</p>
+<p class="value mono" style="font-size:16px;letter-spacing:0;color:#4FA8F5;margin-top:4px;">
+query.py
+</p>
+<p class="note">Lambda · database access</p>
+</div>
+<div class="metric">
+<p class="label">Upload endpoint</p>
+<p class="value mono" style="font-size:16px;letter-spacing:0;color:#4FA8F5;margin-top:4px;">
+POST /upload
+</p>
+<p class="note">Asynchronous response · HTTP 202</p>
+</div>
+<div class="metric">
+<p class="label">Processing path</p>
+<p class="value mono" style="font-size:16px;letter-spacing:0;color:#4FA8F5;margin-top:4px;">
+S3 → Step Functions
+</p>
+<p class="note">Workflow orchestration</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel success">
+<p class="panel-eyebrow">Compliance dashboard</p>
+<h3>Transaction visibility</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li><strong>Overview:</strong> Provides a system-level summary of transaction activity, volumes, and risk distribution.</li>
+<li><strong>Risk Monitoring:</strong> Presents transaction-level information and classifications for more detailed investigation.</li>
+<li><strong>CSV processing:</strong> Displays the backend processing status as transactions move through the processing stages.</li>
+<li><strong>Transaction details:</strong> Makes risk classifications and triggered rule flags available for review.</li>
+<li><strong>Reports:</strong> Provides access to generated reporting outputs, including downloadable CSV and JSON formats.</li>
+</ul>
+</div>
+<div class="panel">
+<p class="panel-eyebrow">Backend processing</p>
+<h3>From upload to persisted results</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li><strong>File received:</strong> The uploaded CSV is stored in the raw S3 area.</li>
+<li><strong>Processing started:</strong> Step Functions coordinates the upload workflow.</li>
+<li><strong>Data validation:</strong> Valid records continue while invalid records are separated into quarantine.</li>
+<li><strong>Transactions queued:</strong> Valid transactions are passed to SQS FIFO for asynchronous processing.</li>
+<li><strong>Risk assessment:</strong> The scoring component applies the configured risk rules.</li>
+<li><strong>Results saved:</strong> Transaction and risk information is persisted in the relevant databases.</li>
+</ul>
+</div>
+</div>
+
+<div class="panel highlight" style="margin-top:14px;">
+<p class="panel-eyebrow">Processing visibility and reliability</p>
+<h3>Accepted, processed, and persisted are different states</h3>
+<p>
+The HTTP 202 response confirms that the upload request has been
+accepted for processing. It does not mean that every transaction
+has already been scored or saved. The dashboard obtains processing
+status from the backend, allowing progress to reflect the actual
+workflow. Completion is represented only after the results have
+been persisted.
+</p>
+<p style="margin-top:7px;">
+CloudWatch logs and metrics provide operational visibility into
+the Lambda processing components, while Step Functions and SQS
+help coordinate the workflow and separate transaction ingestion
+from scoring. The API, database records, and generated reports
+provide additional views of the system's outputs.
+</p>
+</div>
+</div>
+</section>
+
+<!-- SLIDE 10 — GOVERNANCE & COST -->
+<section class="slide" data-title="Governance & cost">
+<div class="slide-inner">
+<p class="eyebrow">09 · GOVERNANCE & COST</p>
+<h1 class="small">Governance, security, and cost awareness</h1>
+<p class="lede">
+FinTrust considers how transaction data is protected, managed,
+retained, and processed responsibly while keeping AWS costs under
+control.
+</p>
+
+<div class="grid-3">
+<div class="panel">
+<p class="panel-eyebrow">Data governance</p>
+<h3>POPIA-informed design</h3>
+<ul class="bullets">
+<li>Identifies personal, operational, and derived transaction information.</li>
+<li>Uses validation and quarantine to manage data quality.</li>
+<li>Applies access restrictions to sensitive resources.</li>
+<li>Considers data lifecycle and retention requirements.</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Security controls</p>
+<h3>Protecting the environment</h3>
+<ul class="bullets">
+<li><strong>IAM:</strong> Restricts access through scoped permissions.</li>
+<li><strong>SSM:</strong> Stores application configuration and protected parameters.</li>
+<li><strong>VPC:</strong> Keeps RDS within private networking.</li>
+<li><strong>VPC endpoints:</strong> Provide private access to supported AWS services.</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Cost management</p>
+<h3>Avoiding unnecessary costs</h3>
+<ul class="bullets">
+<li>No NAT Gateway, avoiding its hourly and data-processing charges.</li>
+<li>Uses managed and serverless services where appropriate.</li>
+<li>Considers AWS Free Tier allowances and available credits.</li>
+<li>Billing and Cost Explorer support usage monitoring.</li>
+</ul>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel">
+<p class="panel-eyebrow">Data lifecycle</p>
+<h3>Proposed retention periods</h3>
+<ul class="bullets">
+<li><strong>Hot:</strong> RDS operational data for 12 months.</li>
+<li><strong>Warm:</strong> S3 storage for 3 years.</li>
+<li><strong>Cold:</strong> S3 Glacier archival for 7 years.</li>
+</ul>
+<p style="margin-top:9px;">
+These are proposed design periods. Final retention must be
+confirmed against applicable legal and organisational requirements.
+</p>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Migration strategy</p>
+<h3>Planning for legacy systems</h3>
+<p>
+The project evaluates AWS's 7 Rs migration strategies:
+Retire, Retain, Rehost, Relocate, Repurchase, Replatform,
+and Refactor.
+</p>
+<p style="margin-top:9px;">
+AWS Application Migration Service is considered for suitable
+server-based workloads. Transaction files follow the S3
+ingestion and processing workflow.
+</p>
+</div>
+</div>
+
+<p class="sub" style="margin-top:14px;">
+The focus is on responsible data handling, controlled access,
+private connectivity, and awareness of ongoing AWS consumption.
+</p>
+</div>
+</section>
+
+<!-- SLIDE 11 — SQL AND PYTHON ENGINEERING -->
+<section class="slide" data-title="SQL and Python engineering">
+<div class="slide-inner">
+<p class="eyebrow">10 · ENGINEERING FOUNDATIONS</p>
+<h1 class="small">The SQL and Python behind FinTrust</h1>
+<p class="lede">
+SQL provides structured data storage and analysis, while Python
+implements the validation, processing, and risk assessment logic.
+</p>
+
+<div class="grid-2">
+<div class="panel highlight">
+<p class="panel-eyebrow">SQL · PostgreSQL</p>
+<h3>Structured data and reporting</h3>
+<ul class="bullets">
+<li>Relational tables for customers, accounts, transactions, risk events, and alerts.</li>
+<li>Primary keys, foreign keys, constraints, and indexes support data integrity.</li>
+<li>CTEs organise transaction and risk information for analysis.</li>
+<li>Window functions support analytical reporting, including running balances.</li>
+<li>Views and stored database logic support reusable queries and operations.</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Python · Application development</p>
+<h3>Ten focused modules</h3>
+<ul class="bullets">
+<li><strong>Foundation:</strong> Configuration, database access, DynamoDB, and models.</li>
+<li><strong>Data quality:</strong> Validation and ingestion.</li>
+<li><strong>Risk processing:</strong> Scoring and alerting.</li>
+<li><strong>Application access:</strong> Query handling and reporting.</li>
+</ul>
+<p style="margin-top:10px;">
+Separating these responsibilities makes the application
+easier to maintain, test, and extend.
+</p>
+</div>
+</div>
+
+<div class="grid-2" style="margin-top:14px;">
+<div class="panel">
+<p class="panel-eyebrow">Testing and quality</p>
+<h3>Automated checks</h3>
+<ul class="bullets">
+<li>Pytest provides the automated testing framework.</li>
+<li>Moto supports tests using mocked AWS services.</li>
+<li>GitHub Actions runs the configured CI workflow.</li>
+<li>Validation checks required fields, data types, formats, and invalid values.</li>
+</ul>
+</div>
+
+<div class="panel success">
+<p class="panel-eyebrow">Testing evidence</p>
+<h3>500+ passing validator tests</h3>
+<p>
+The validator test suite collected and passed 500+ test cases.
+This provides evidence that transaction validation rules
+are being checked systematically.
+</p>
+<p style="margin-top:9px;">
+Together, SQL, Python, and automated testing support
+consistent data handling and traceable risk outcomes.
+</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- SLIDE 12 — CLOSE -->
+<section class="slide" data-title="Close">
+<div class="slide-inner">
+<p class="eyebrow">11 · CLOSE</p>
+<h1 class="small">Thank you</h1>
+<p class="lede">
+FinTrust brings together cloud architecture, relational and
+NoSQL data storage, Python development, risk scoring, and data
+governance in one transaction insights and risk monitoring system.
+</p>
+
+<div class="grid-2">
+<div class="panel success">
+<p class="panel-eyebrow">Delivered solution</p>
+<h3>The system in summary</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li>Event-driven transaction ingestion and validation</li>
+<li>Upload workflow orchestration through Step Functions</li>
+<li>Asynchronous scoring through SQS FIFO</li>
+<li>Structured transaction ledger in PostgreSQL</li>
+<li>Risk and event data in DynamoDB</li>
+<li>REST API and compliance dashboard</li>
+<li>Automated alerting and monthly reporting components</li>
+<li>Monitoring, security, and governance documentation</li>
+</ul>
+</div>
+
+<div class="panel">
+<p class="panel-eyebrow">Future iterations</p>
+<h3>Where the system could go next</h3>
+<ul class="bullets" style="margin-top:8px;">
+<li>Compliance workflows for manually flagging and resolving transactions.</li>
+<li>Pre-signed S3 URLs for direct browser uploads.</li>
+<li>Machine learning as an additional layer over the existing rule engine.</li>
+<li>WebSocket push for more immediate dashboard updates.</li>
+<li>Further resilience, recovery, and operational automation.</li>
+</ul>
+</div>
+</div>
+
+<p class="sub" style="margin-top:22px;font-size:13px;">
+Questions welcome.
+</p>
+</div>
+</section>
+
+</div>
+
+<nav class="navbar" aria-label="Presentation controls">
+<div class="brand">
+<span class="brand-mark">F</span>
+<span class="brand-text">FinTrust · Capstone Presentation</span>
+</div>
+
+<div class="nav-controls">
+<button class="nav-button" id="prevBtn" type="button" aria-label="Previous slide">← Prev</button>
+<span class="nav-counter" id="counter">1 / 12</span>
+<button class="nav-button" id="nextBtn" type="button" aria-label="Next slide">Next →</button>
+<button class="nav-button" id="gridBtn" type="button" aria-label="Slide overview">⊞</button>
+</div>
+
+<div class="progress" id="progress" style="width:8.333%;"></div>
+</nav>
+</div>
+
+<div class="overview" id="overview" role="dialog" aria-label="Slide overview">
+<div class="overview-head">
+<h2>All slides</h2>
+<button class="overview-close" id="closeOverview" type="button">Close (Esc)</button>
+</div>
+</div>
+
+<div class="hint" id="hint">
+Navigate with <kbd>←</kbd> <kbd>→</kbd> · press <kbd>Esc</kbd> for all slides
+</div>
+
+<script>
+(function () {
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const total = slides.length;
+  let current = 0;
+
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+  const gridBtn = document.getElementById('gridBtn');
+  const overview = document.getElementById('overview');
+  const closeOverview = document.getElementById('closeOverview');
+
+  slides.forEach((slide, i) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'overview-card';
+
+    const number = document.createElement('div');
+    number.className = 'num';
+    number.textContent = String(i + 1).padStart(2, '0');
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = slide.dataset.title || 'Untitled';
+
+    card.appendChild(number);
+    card.appendChild(title);
+
+    card.addEventListener('click', () => {
+      goTo(i);
+      closeGrid();
+    });
+
+    overview.appendChild(card);
+  });
+
+  const cards = Array.from(document.querySelectorAll('.overview-card'));
+
+  function goTo(index, direction) {
+    if (index < 0 || index >= total || index === current) return;
+
+    const previous = slides[current];
+    const next = slides[index];
+    const dir = direction || (index > current ? 1 : -1);
+
+    previous.classList.remove('active');
+
+    if (dir > 0) {
+      previous.classList.add('leaving-left');
+    }
+
+    window.setTimeout(() => {
+      previous.classList.remove('leaving-left');
+    }, 360);
+
+    next.classList.add('active');
+    next.scrollTop = 0;
+
+    current = index;
+    updateUI();
+    updateHash();
+  }
+
+  function updateUI() {
+    counter.textContent = `${current + 1} / ${total}`;
+    progress.style.width = `${((current + 1) / total) * 100}%`;
+
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === total - 1;
+
+    cards.forEach((card, i) => {
+      card.classList.toggle('current', i === current);
+    });
+  }
+
+  function updateHash() {
+    history.replaceState(null, '', `#${current + 1}`);
+  }
+
+  function closeGrid() {
+    overview.classList.remove('open');
+  }
+
+  function toggleGrid() {
+    overview.classList.toggle('open');
+  }
+
+  prevBtn.addEventListener('click', () => goTo(current - 1, -1));
+  nextBtn.addEventListener('click', () => goTo(current + 1, 1));
+  gridBtn.addEventListener('click', toggleGrid);
+  closeOverview.addEventListener('click', closeGrid);
+
+  overview.addEventListener('click', (event) => {
+    if (event.target === overview) closeGrid();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (overview.classList.contains('open')) closeGrid();
+      return;
+    }
+
+    if (overview.classList.contains('open')) {
+      if (event.key === 'g' || event.key === 'G') toggleGrid();
+      return;
+    }
+
+    if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'PageDown') {
+      event.preventDefault();
+      goTo(current + 1, 1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+      event.preventDefault();
+      goTo(current - 1, -1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      goTo(0, -1);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      goTo(total - 1, 1);
+    } else if (event.key === 'g' || event.key === 'G') {
+      toggleGrid();
+    }
+  });
+
+  let touchStartX = 0;
+
+  document.addEventListener('touchstart', (event) => {
+    touchStartX = event.changedTouches[0].screenX;
+  }, { passive: true });
+
+  document.addEventListener('touchend', (event) => {
+    const deltaX = event.changedTouches[0].screenX - touchStartX;
+
+    if (Math.abs(deltaX) < 50) return;
+
+    if (deltaX < 0) {
+      goTo(current + 1, 1);
+    } else {
+      goTo(current - 1, -1);
+    }
+  }, { passive: true });
+
+  const hash = parseInt(window.location.hash.replace('#', ''), 10);
+
+  if (!Number.isNaN(hash) && hash >= 1 && hash <= total) {
+    slides.forEach((slide, i) => {
+      slide.classList.toggle('active', i === hash - 1);
+    });
+
+    current = hash - 1;
+  }
+
+  updateUI();
+})();
+</script>
+</body>
+</html>

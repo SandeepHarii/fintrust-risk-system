@@ -1,0 +1,19 @@
+{
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Action":  "s3:GetObject",
+                          "Condition":  {
+                                            "StringEquals":  {
+                                                                 "AWS:SourceArn":  "arn:aws:cloudfront::051084216179:distribution/E1VIR15T1Z3JVN"
+                                                             }
+                                        },
+                          "Principal":  {
+                                            "Service":  "cloudfront.amazonaws.com"
+                                        },
+                          "Resource":  "arn:aws:s3:::fintrust-demo-frontend-051084216179/*",
+                          "Effect":  "Allow",
+                          "Sid":  "AllowCloudFrontRead"
+                      }
+                  ]
+}

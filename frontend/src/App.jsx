@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import './App.css'
 
-const API_BASE =
-  'https://a1tia7lthb.execute-api.eu-north-1.amazonaws.com/prod'
-
-const API_KEY = import.meta.env.VITE_API_KEY
+const API_BASE = '/api'
 const PAGE_SIZE = 5
 
 /* ------------------------------------------------------------------
@@ -24,29 +21,24 @@ const navigation = [
  * ------------------------------------------------------------------ */
 
 async function apiRequest(path, options = {}) {
-  if (!API_KEY) {
-    throw new Error(
-      'API key is missing. Configure VITE_API_KEY in frontend/.env.local.',
-    )
-  }
-
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      'x-api-key': API_KEY,
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !options.headers?.['Content-Type']
+        ? { 'Content-Type': 'application/json' }
+        : {}),
       ...options.headers,
     },
   })
 
   const text = await response.text()
- let data
+  let data
 
-try {
-  data = text ? JSON.parse(text) : null
-} catch {
-  data = text
-}
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = text
+  }
 
   if (!response.ok) {
     const message =
@@ -1787,12 +1779,12 @@ function RiskOverviewScreen({
   }, [])
 
   useEffect(() => {
-  const timer = setTimeout(() => {
-    loadQueue(queuePage)
-  }, 0)
+    const timer = setTimeout(() => {
+      loadQueue(queuePage)
+    }, 0)
 
-  return () => clearTimeout(timer)
-}, [loadQueue, queuePage, refreshSignal])
+    return () => clearTimeout(timer)
+  }, [loadQueue, queuePage, refreshSignal])
 
   if (loading) {
     return (
@@ -2157,7 +2149,7 @@ function ReportsScreen({ transactions, insights, loading }) {
         )}
       </section>
 
-      <section className="content-card">
+      <section className="content-card snapshot-card">
         <SectionHeading
           eyebrow="LIVE TRANSACTION DATA"
           title="Current transaction snapshot"
@@ -2461,7 +2453,7 @@ function App() {
       setApiStatus('offline')
 
       setError(
-        `${err.message}. Check the API key, API availability and CORS configuration for localhost:5173.`,
+        `${err.message}. Check the FinTrust API proxy and backend availability.`
       )
 
       setTransactions([])
