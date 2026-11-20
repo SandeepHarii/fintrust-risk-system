@@ -4,7 +4,7 @@ FinTrust is an event-driven AWS prototype for processing CSV financial transacti
 
 ## Architecture overview
 
-The [original architecture diagram](FinTrust%20Transaction%20Insights%20and%20Risk%20Monitoring%20System.jpg) is retained as capstone evidence. The diagram has not yet been visually audited against the final Step Functions workflow.
+The [final architecture diagram](fintrust-final-architecture.svg) reflects the completed implementation. The [original capstone diagram](FinTrust%20Transaction%20Insights%20and%20Risk%20Monitoring%20System.jpg) is retained for historical reference; it predates the final Step Functions and dashboard updates.
 
 ```text
 React/Vite dashboard
