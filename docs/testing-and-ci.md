@@ -48,7 +48,7 @@ Run these tests only with an authorized, active AWS test environment, synthetic 
 - **Does:** run unit tests on pushes and pull requests; run PostgreSQL integration tests on pushes to `develop`; allow manually triggered AWS end-to-end tests.
 - **Does not:** automatically deploy the complete AWS infrastructure; run live AWS end-to-end tests on every commit; guarantee that the hosted demo is available.
 
-For the latest actual pass/fail status, inspect [GitHub Actions](../../actions) or run the suites. Do not use historical test counts as proof of current CI status.
+For the latest actual pass/fail status, inspect [GitHub Actions](https://github.com/SandeepHarii/fintrust-risk-system/actions) or run the suites. Do not use historical test counts as proof of current CI status.
 
 ## Evidence and future improvements
 
