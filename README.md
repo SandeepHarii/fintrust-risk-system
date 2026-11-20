@@ -1,532 +1,182 @@
-# FinTrust Transaction Insights and Risk Monitoring System
+# FinTrust | Transaction Insights & Risk Monitoring System
+
+**An AWS-based, event-driven transaction processing and rule-based risk monitoring prototype.**
+
+**Solo capstone project** · **Built in three weeks (September–October 2026)** · **2nd place, 90/100**
+
+> **Status:** Completed and demonstrated in October 2026. Cost-incurring AWS resources were subsequently shut down, so the hosted dashboard and API are not currently advertised as live. FinTrust continues as a software engineering portfolio project.
 
 ## Overview
 
-The **FinTrust Transaction Insights and Risk Monitoring System** is a cloud-based transaction processing and risk monitoring platform designed for FinTrust Bank SA.
+FinTrust processes CSV transaction uploads, validates records, quarantines invalid data, evaluates defined risk rules, and stores transaction and risk information. A REST API and React dashboard provide access to the results. The system also supports high-risk email alerts, scheduled reporting and operational monitoring.
 
-The system receives transaction data from legacy systems, validates and processes the data, applies rule-based risk scoring, stores transaction and risk information, exposes secure APIs for users, sends alerts for high-risk activity, and generates monthly risk reports.
+FinTrust is a **demonstration prototype**, not a live banking system. Its classifications are not fraud verdicts or automated compliance decisions. It does not use machine-learning fraud detection.
 
-The solution is designed using AWS managed services with an event-driven and serverless architecture.
+## Key features
 
----
+- **CSV ingestion and validation:** Validates uploaded records and routes invalid data to Amazon S3 quarantine.
+- **Asynchronous processing:** SQS FIFO separates ingestion from scoring; a dead-letter queue isolates repeatedly failing messages.
+- **Rule-based risk scoring:** Evaluates transaction amount, account velocity and cross-border indicators.
+- **Data persistence:** Uses RDS PostgreSQL for relational transaction records and DynamoDB for risk events and upload tracking.
+- **Workflow orchestration:** AWS Step Functions tracks upload completion and failure through DynamoDB and triggers notification handling.
+- **API and dashboard:** API Gateway and a React/Vite interface expose transaction and risk insights.
+- **Alerts and reports:** Amazon SES sends notifications; EventBridge and Lambda support scheduled reporting.
+- **Engineering practices:** CloudWatch monitoring, X-Ray tracing, pytest suites and GitHub Actions CI.
 
-## Business Objective
+## Architecture
 
-The system is designed to help FinTrust:
-
-* Process transaction data reliably
-* Identify potentially high-risk transaction activity
-* Give compliance teams access to transaction and risk insights
-* Automatically alert compliance officers about high-risk activity
-* Provide executive leadership with recurring risk reports
-* Maintain appropriate security, governance and data lifecycle controls
-
-The project does **not** implement machine-learning fraud detection or make automated real-world compliance decisions.
-
----
-
-# System Architecture
-
-The core transaction flow is:
+![FinTrust system architecture](docs/architecture/FinTrust%20Transaction%20Insights%20and%20Risk%20Monitoring%20System.jpg)
 
 ```text
-Legacy Transaction System
-          │
-          │ CSV
-          ▼
-    Amazon S3
-  Raw Transactions
-          │
-          │ S3 Event
-          ▼
-    ingest.py Lambda
-          │
-     ┌────┴────┐
-     │         │
- Invalid     Valid
-     │         │
-     ▼         ▼
-  S3       SQS FIFO
-Quarantine     │
-               ▼
-         score.py Lambda
-          │           │
-          ▼           ▼
-       RDS          DynamoDB
-    PostgreSQL     Risk / Events
-          │
-          │ High Risk
-          ▼
-     alert.py
-          │
-          ▼
-         SES
-          │
-          ▼
- Compliance Officer
+CSV upload / API
+       |
+       v
+   Amazon S3 (raw)
+       |
+       v
+   Ingest Lambda --------> S3 quarantine (invalid records)
+       |
+       v
+    SQS FIFO ----> DLQ (repeated failures)
+       |
+       v
+   Score Lambda
+       |  \
+       |   +----> DynamoDB (risk events / tracking)
+       +--------> RDS PostgreSQL (transactions / risk records)
+       |
+       +--------> Alert Lambda --> Amazon SES
+
+React dashboard --> API Gateway --> API/Lambda handlers --> Data stores
+EventBridge --> Report Lambda --> S3 reports
 ```
 
-Users access transaction and risk information through:
+### Step Functions upload workflow
 
-```text
-Users
-  ↓
-API Gateway
-  ↓
-query.py Lambda
-  ↓
-RDS PostgreSQL + DynamoDB
+The **final deployed workflow** is represented by [`fintrust-upload-workflow.json`](fintrust-upload-workflow.json). It invokes ingestion, waits, and checks a DynamoDB upload-tracking record until processing reaches `COMPLETED` or `FAILED`. On completion, it invokes the alert Lambda with `UPLOAD_COMPLETED`; on failure, it invokes the alert Lambda with `UPLOAD_FAILED`. Notification failures are caught so the workflow can still reach its terminal state.
+
+> The separate [`infrastructure/step-functions/upload-workflow.asl.json`](infrastructure/step-functions/upload-workflow.asl.json) is an earlier, simplified definition. It is **not** the final deployed notification workflow.
+
+See the [architecture notes](docs/architecture/system-architecture.md) and [Well-Architected self-assessment](docs/architecture/well-architected-self-assessment.md).
+
+## Technology stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React, JavaScript, Vite, CSS |
+| Backend | Python, AWS Lambda |
+| API | Amazon API Gateway, REST |
+| Processing | Amazon S3, SQS FIFO, dead-letter queue, AWS Step Functions |
+| Data | Amazon RDS PostgreSQL, Amazon DynamoDB |
+| Notifications and reporting | Amazon SES, Amazon EventBridge, Amazon S3 |
+| Operations and security | Amazon CloudWatch, AWS X-Ray, IAM, VPC, Systems Manager Parameter Store |
+| Testing and CI | pytest, GitHub Actions |
+
+## Risk assessment engine
+
+The rules are implemented in [`backend/fintrust/score.py`](backend/fintrust/score.py):
+
+| Rule | Condition | Points |
+| --- | --- | ---: |
+| `HIGH_AMOUNT` | Amount greater than R50,000 | +30 |
+| `HIGH_VELOCITY` | More than 10 account transactions within one hour | +40 |
+| `CROSS_BORDER` | Source and destination countries differ | +20 |
+
+**Classification:** `HIGH` if `HIGH_AMOUNT` or `HIGH_VELOCITY` is triggered, or if the score is at least 60. Otherwise `MEDIUM` for scores of at least 30, and `LOW` below 30. Classification is **not based on score thresholds alone**.
+
+These rules are illustrative and do not establish whether a transaction is fraudulent.
+
+## API and dashboard
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/transactions` | Search, filter and paginate transaction records |
+| GET | `/insights` | Retrieve aggregate transaction and risk insights |
+| POST | `/upload` | Accept a CSV upload for asynchronous processing |
+| POST | `/flag` | Flag an account or transaction for review |
+| POST | `/resolve` | Resolve a review or risk event |
+
+The dashboard source is in [`frontend/`](frontend/). API contracts and deployment configuration should be checked before attempting external integrations.
+
+## Testing and CI
+
+- [Unit tests](tests/unit/)
+- [Integration tests](tests/integration/)
+- [AWS end-to-end test](tests/e2e/)
+- [GitHub Actions workflow](.github/workflows/ci.yml)
+
+GitHub Actions runs unit tests on pushes and pull requests. Integration tests run on pushes to `develop` with a PostgreSQL service. The AWS end-to-end job is manually triggered and requires an active AWS environment and configured credentials.
+
+Run unit tests locally after installing dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+python -m pytest tests/unit -v
 ```
 
-Monthly reporting is handled through:
+## Security and operations
 
-```text
-EventBridge
-     ↓
-report.py Lambda
-     ↓
-SQL Analytics
-     ↓
-S3 Monthly Reports
-```
+The design includes IAM execution roles, private RDS networking, encrypted storage, Systems Manager Parameter Store, application logs, metrics and alarms. The [Well-Architected self-assessment](docs/architecture/well-architected-self-assessment.md) documents design trade-offs and limitations.
 
----
+**Production note:** FinTrust is a portfolio prototype, not a production-ready banking platform. Do not use real customer data or publish credentials.
 
-# AWS Services
-
-| Service                                 | Purpose                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------ |
-| **Amazon S3**                           | Transaction uploads, quarantine, processed data and monthly reports            |
-| **AWS Lambda**                          | Serverless transaction processing, scoring, API handling, alerts and reporting |
-| **Amazon SQS FIFO**                     | Reliable ordered transaction processing                                        |
-| **Amazon SQS DLQ**                      | Isolation of messages that repeatedly fail processing                          |
-| **Amazon RDS PostgreSQL**               | Core relational transaction ledger                                             |
-| **Amazon DynamoDB**                     | Risk scores, event log and session tokens                                      |
-| **Amazon API Gateway**                  | Secure REST API                                                                |
-| **Amazon SES**                          | High-risk compliance alerts                                                    |
-| **Amazon EventBridge**                  | Monthly report scheduling                                                      |
-| **Amazon CloudWatch**                   | Logs, metrics, alarms, dashboards and Logs Insights                            |
-| **AWS X-Ray**                           | Distributed application tracing                                                |
-| **AWS IAM**                             | Least-privilege access control                                                 |
-| **AWS KMS**                             | Encryption key management                                                      |
-| **AWS Systems Manager Parameter Store** | Application configuration                                                      |
-| **Amazon VPC**                          | Network isolation for private resources                                        |
-
-A NAT Gateway is intentionally excluded to control costs and remain within the project constraints.
-
----
-
-# Lambda Functions
-
-The application contains five core Lambda functions.
-
-## `ingest.py`
-
-**Trigger:** S3 Object Created
-
-Responsible for:
-
-* Reading uploaded CSV files
-* Parsing transaction records
-* Validating required fields
-* Sanitising input
-* Performing POPIA-aware field checks
-* Sending invalid records to S3 quarantine
-* Sending valid transaction events to SQS FIFO
-* Producing structured logs
-
-The ingestion function does not perform the final risk scoring.
-
----
-
-## `score.py`
-
-**Trigger:** SQS FIFO
-
-Responsible for:
-
-* Consuming transaction events
-* Applying the defined risk rules
-* Calculating a risk score
-* Determining the transaction risk level
-* Persisting transaction information to RDS PostgreSQL
-* Persisting risk information to DynamoDB
-* Triggering high-risk alert processing
-
-Initial risk indicators include:
-
-* **HIGH_AMOUNT:** transaction amount greater than R50,000
-* **HIGH_VELOCITY:** more than 10 transactions within one hour
-* **CROSS_BORDER:** transaction identified as cross-border
-
-The final scoring weights and risk-level thresholds will be defined as part of the system design.
-
----
-
-## `alert.py`
-
-**Trigger:** High-risk scoring event
-
-Responsible for:
-
-* Receiving high-risk transaction results
-* Creating compliance alert information
-* Sending alerts through Amazon SES
-* Logging alert processing
-
----
-
-## `query.py`
-
-**Trigger:** Amazon API Gateway
-
-Responsible for handling API requests and interacting with RDS PostgreSQL and DynamoDB.
-
-The API supports:
-
-```text
-GET  /transactions
-GET  /insights
-POST /upload
-POST /flag
-POST /resolve
-```
-
----
-
-## `report.py`
-
-**Trigger:** Amazon EventBridge monthly schedule
-
-Responsible for:
-
-* Running SQL analytics
-* Generating monthly risk reports
-* Producing CSV and JSON output
-* Storing reports in Amazon S3
-
-The reporting process will use SQL features including CTEs, window functions, ranking and compliance views.
-
----
-
-# API
-
-## `GET /transactions`
-
-Retrieves transaction records.
-
-Supported functionality includes:
-
-* Account filtering
-* Pagination
-* Transaction information
-* Risk information
-
-Example:
-
-```text
-GET /transactions?account_id=ACC001&limit=50&offset=0
-```
-
----
-
-## `GET /insights`
-
-Returns aggregated transaction and risk information for monitoring and dashboard use.
-
-Example response:
-
-```json
-{
-  "total_transactions": 1250,
-  "total_value": 4525000.00,
-  "high_risk_transactions": 27,
-  "medium_risk_transactions": 84,
-  "low_risk_transactions": 1139
-}
-```
-
----
-
-## `POST /upload`
-
-Starts asynchronous transaction ingestion.
-
-The API returns:
-
-```text
-202 Accepted
-```
-
-The transaction file is then processed through:
-
-```text
-S3 → ingest.py → SQS FIFO → score.py
-```
-
----
-
-## `POST /flag`
-
-Allows an authorised user to manually flag an account or transaction for compliance review.
-
-Example request:
-
-```json
-{
-  "account_id": "ACC001",
-  "reason": "Suspicious transaction activity"
-}
-```
-
----
-
-## `POST /resolve`
-
-Allows an authorised user to resolve an existing compliance or risk event.
-
-Example request:
-
-```json
-{
-  "account_id": "ACC001",
-  "reason": "Reviewed and cleared"
-}
-```
-
----
-
-# Data Storage
-
-## Amazon RDS PostgreSQL
-
-RDS stores the core relational transaction ledger.
-
-The database will contain:
-
-* `accounts`
-* `transactions`
-* `risk_events`
-* `alerts`
-
-The database will use:
-
-* Primary keys
-* Foreign keys
-* NOT NULL constraints
-* Appropriate indexes
-* 3NF relational design
-* Stored procedures/functions
-* Compliance views
-* SQL analytics queries
-
-RDS will operate inside a private VPC subnet and will not be publicly accessible.
-
----
-
-## Amazon DynamoDB
-
-DynamoDB provides a NoSQL event and risk store.
-
-Primary key design:
-
-```text
-Partition Key: account_id
-Sort Key:      tx_timestamp
-```
-
-The table will support:
-
-* Risk scores
-* Event records
-* Session tokens
-* Account-based queries
-
----
-
-# Data Validation and Quality
-
-Transaction data is validated during ingestion.
-
-Invalid records are not inserted into the main transaction pipeline.
-
-Instead:
-
-```text
-Invalid Transaction
-        ↓
-S3 Quarantine
-        +
-Operational Logging
-```
-
-Processing failures from the SQS pipeline are isolated through the Dead-Letter Queue.
-
----
-
-# Security
-
-The system follows a least-privilege security model.
-
-Each Lambda receives its own IAM execution role with only the permissions required for its responsibilities.
-
-The system uses:
-
-* AWS IAM
-* AWS KMS
-* Amazon VPC
-* Private RDS networking
-* Security Groups
-* SSM Parameter Store
-* API Gateway API keys and usage plans
-* Encrypted S3 storage
-
-Wildcard IAM actions are avoided.
-
----
-
-# Monitoring and Observability
-
-Amazon CloudWatch provides:
-
-* Structured Lambda logs
-* Custom metrics
-* Error-rate monitoring
-* High-risk transaction metrics
-* DLQ monitoring
-* CloudWatch alarms
-* Logs Insights
-* Monitoring dashboards
-
-AWS X-Ray provides distributed tracing across the application flow.
-
----
-
-# Data Lifecycle
-
-The planned data lifecycle is:
-
-```text
-Hot
-RDS PostgreSQL
-12 months
-       ↓
-Warm
-S3 Parquet
-3 years
-       ↓
-Cold
-S3 Glacier
-7 years
-```
-
-The lifecycle supports the project's governance and retention requirements.
-
----
-
-# Project Structure
+## Repository structure
 
 ```text
 fintrust-risk-system/
-│
-├── fintrust/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── db.py
-│   ├── dynamo.py
-│   ├── models.py
-│   ├── validators.py
-│   ├── ingest.py
-│   ├── score.py
-│   ├── alert.py
-│   ├── query.py
-│   └── report.py
-│
-├── tests/
-│   ├── conftest.py
-│   ├── unit/
-│   └── integration/
-│
-├── data/
-│   ├── demo/
-│   ├── seed/
-│   ├── schemas
-│   └── sql/
-│       ├── schema.sql
-│       ├── seed.sql
-│       ├── risk_report.sql
-│       ├── monthly_summary.sql
-│       ├── views.sql
-│       └── functions.sql
-│
-├── docs/
-├── infrastructure/
-├── evidence/
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-│
-├── .env.example
-├── .gitignore
-├── README.md
-└── requirements.txt
+├── backend/fintrust/       # Python ingestion, scoring, persistence, API and reports
+├── frontend/               # React/Vite dashboard
+├── data/                   # SQL schema, seed files and demo data
+├── deployment/             # Deployment-related files
+├── infrastructure/         # AWS configuration and workflow definitions
+├── docs/                   # Architecture, security, governance and presentation
+├── evidence/               # Evidence folders; some awaiting curated assets
+├── scripts/                # Supporting scripts
+├── tests/                  # Unit, integration and end-to-end tests
+├── .github/workflows/      # GitHub Actions CI
+├── requirements.txt
+└── README.md
 ```
 
----
+## Getting started
 
-# Development Status
+Cloning this repository does **not** provision the AWS infrastructure or start the complete system. Full deployment requires AWS resources, permissions, database setup, configuration and API integration.
 
-### Completed
+For local inspection and tests:
 
-* Project scope defined
-* Official project requirements mapped
-* AWS architecture designed
-* Architecture diagram completed
-* Lambda responsibilities defined
-* API endpoints defined
-* GitHub repository established
-* Development and main branches established
-* Python development environment established
+```bash
+git clone https://github.com/SandeepHarii/fintrust-risk-system.git
+cd fintrust-risk-system
+python -m venv .venv
+# Activate the virtual environment for your operating system
+python -m pip install -r requirements.txt
+python -m pytest tests/unit -v
+```
 
-### In Progress
+For frontend development:
 
-* AWS infrastructure deployment
-* SSM configuration
-* IAM Lambda execution roles
-* 3NF database design
-* RDS PostgreSQL setup
-* DynamoDB setup
-* Python data-access layer
-* Security and storage configuration
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Planned
+Live frontend features require appropriate backend API configuration. A complete reproducible deployment guide remains a future documentation improvement.
 
-* Transaction ingestion
-* Risk scoring
-* API implementation
-* Alerting
-* Monthly reporting
-* Automated testing
-* CI/CD
-* Monitoring
-* End-to-end testing
-* Final documentation
-* Live demonstration
+## Project outcome and current status
+
+FinTrust was independently developed for an October 2026 cloud capstone and achieved **second place with a score of 90/100**. It demonstrates cloud architecture, Python backend development, React, relational and NoSQL data, event-driven processing, testing and observability.
+
+After the capstone, cost-incurring AWS services were shut down to avoid unnecessary charges. The source code remains available for review. Future improvements will be tracked separately from the original capstone submission.
+
+## Further documentation
+
+- [Architecture overview](docs/architecture/system-architecture.md)
+- [Well-Architected self-assessment](docs/architecture/well-architected-self-assessment.md)
+- [Capstone presentation](docs/presentations/fintrust-presentation.html)
+- [Frontend source](frontend/)
+- [Automated tests](tests/)
 
 ---
 
-# Project Goals
-
-The completed system must demonstrate:
-
-* Event-driven AWS architecture
-* Serverless application development
-* Relational and NoSQL data modelling
-* Python application development
-* Secure API design
-* Automated risk monitoring
-* Data governance
-* Automated testing and CI/CD
-* Cloud observability
-* Production-quality engineering practices
+**Developed by Sandeep Hari** · [LinkedIn](https://www.linkedin.com/in/sandeep-harii) · [GitHub](https://github.com/SandeepHarii)
