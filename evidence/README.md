@@ -23,6 +23,10 @@ This directory preserves screenshots from the **October 2026 capstone**. They ar
 - [X-Ray successful trace](week-14/day-2/W14-D2-05-XRay-Successful-Trace.png)
 - [S3 report objects](week-14/day-4/W14D4_06_S3_Report_Objects.png)
 
+## Priority screenshot review
+
+Before sharing this repository as a polished public portfolio, inspect the API-key-related screenshots in [Week 13, Day 5](week-13/day-5/), especially the API key association and successful request images. Confirm no **actual API key values**, authorization headers, email addresses or other secrets are visible. Screenshot filenames alone cannot establish whether values are exposed. If a genuine key is visible, revoke/rotate it in AWS before publishing a redacted replacement. Also inspect the SES email screenshots for personal contact details.
+
 ## Privacy and presentation
 
 These screenshots were committed as part of the capstone evidence. **Review and redact any personal data, email addresses, credentials, tokens or sensitive account details before using them in a public portfolio or demo video.** Their presence in GitHub does not mean each image has passed a privacy review.
