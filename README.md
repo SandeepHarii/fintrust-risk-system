@@ -2,7 +2,7 @@
 
 **An AWS-based, event-driven transaction processing and rule-based risk monitoring prototype.**
 
-**Solo capstone project** · **Built in three weeks (September–October 2026)** · **2nd place, 90/100**
+**Solo capstone project** · **Built in four weeks (October 2026)** · **2nd place, 90/100**
 
 > **Status:** Completed and demonstrated in October 2026. Cost-incurring AWS resources were subsequently shut down, so the hosted dashboard and API are not currently advertised as live. FinTrust continues as a software engineering portfolio project.
 
@@ -25,7 +25,9 @@ FinTrust is a **demonstration prototype**, not a live banking system. Its classi
 
 ## Architecture
 
-![FinTrust system architecture](docs/architecture/FinTrust%20Transaction%20Insights%20and%20Risk%20Monitoring%20System.jpg)
+![FinTrust final system architecture](docs/architecture/fintrust-final-architecture.svg)
+
+[Original capstone architecture diagram](docs/architecture/FinTrust%20Transaction%20Insights%20and%20Risk%20Monitoring%20System.jpg)
 
 ```text
 CSV upload / API
