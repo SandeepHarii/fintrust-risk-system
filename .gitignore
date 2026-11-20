@@ -118,3 +118,17 @@ tracking-key.json
 deployment/api-proxy/proxy-env.json
 
 deployment/api-proxy/cloudfront-distribution.json
+
+# Additional local secrets and cloud tooling
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+*.tfvars.json
+credentials.json
+service-account.json
