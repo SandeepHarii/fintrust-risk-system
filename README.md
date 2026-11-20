@@ -178,6 +178,9 @@ After the capstone, cost-incurring AWS services were shut down to avoid unnecess
 - [Capstone presentation](docs/presentations/fintrust-presentation.html)
 - [Frontend source](frontend/)
 - [Automated tests](tests/)
+- [Testing and CI guide](docs/testing-and-ci.md)
+- [Security review findings](docs/security/repository-review.md)
+- [AWS reactivation checklist](docs/deployment/reactivation.md)
 
 ---
 
