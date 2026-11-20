@@ -1,3 +1,5 @@
+> **Contract status:** This document originated as a capstone API design and includes illustrative request/response examples. It is **not a verified OpenAPI specification**. The final frontend proxy currently permits GET `/health`, `/transactions`, `/insights`, `/reports`, GET `/uploads/{upload_id}/progress`, and POST `/upload`. Its allowlist does **not** include POST `/flag` or POST `/resolve`. Verify the backend handlers and deployed routes before treating the examples below as current behavior. API keys and usage plans do not provide end-user authentication.
+
 ## API Design
 
 The FinTrust API provides a secure REST interface for transaction querying, risk insights, transaction uploads, and compliance account actions.
@@ -10,7 +12,7 @@ The API is exposed through **Amazon API Gateway** and processed by the `query.py
 https://{api-id}.execute-api.{region}.amazonaws.com/{stage}
 ```
 
-The deployed API Gateway URL will be added once the API is deployed.
+The capstone API was deployed in October 2026 but its hosted environment is currently shut down. Avoid relying on historical endpoint URLs.
 
 ### Authentication
 
