@@ -1,4 +1,41 @@
-# FinTrust Security and IAM Plan
+# FinTrust Security and IAM
+
+> **Status:** October 2026 capstone security design and implementation notes. The AWS environment was shut down after the demonstration. This document describes intended controls and available repository evidence; it is **not** a current independent security audit or production certification.
+
+## Security posture and important limitations
+
+FinTrust is a prototype using synthetic/demo transaction data. The security design includes per-function IAM roles, private RDS access, S3 encryption, Systems Manager Parameter Store, SQS FIFO/DLQ, HTTPS APIs, CloudWatch and X-Ray.
+
+**Important:** An API Gateway API key and usage plan provide client identification, throttling and quota controls. They do **not** authenticate individual users or provide authorization. A production banking application would need an identity provider or authorizer, role-based access checks, stronger audit controls and security testing.
+
+AWS account IDs and resource ARNs in workflow and policy examples identify deployment resources; they are not secret credentials. They should be parameterized for reusable deployment templates. Never commit access keys, database passwords, session tokens, personal data or live customer transactions.
+
+### What is supported by the repository
+
+- [Configuration helper](../../backend/fintrust/config.py) loads environment variables or SSM parameters.
+- [IAM policy examples](../../infrastructure/iam/) and [Step Functions policies](../../infrastructure/step-functions/) define scoped permissions for selected components.
+- [Final Step Functions workflow](../../fintrust-upload-workflow.json) invokes ingestion, reads DynamoDB upload status and invokes the alert Lambda for completion/failure notifications.
+- [GitHub Actions CI](../../.github/workflows/ci.yml) runs unit tests and integration tests under defined triggers.
+- [Well-Architected self-assessment](../architecture/well-architected-self-assessment.md) records known architecture gaps.
+
+These files **do not independently prove** that every IAM role, bucket policy, security group, encryption setting or API method was configured exactly as intended in the final AWS account. Confirm those settings against deployment evidence before claiming verified compliance.
+
+## Priorities before future deployment
+
+1. Replace hardcoded account-specific ARNs with deployment variables or generated references.
+2. Verify least-privilege IAM permissions, including Step Functions notification and upload-tracking access.
+3. Add real user authentication and authorization if exposing the API beyond a controlled demonstration.
+4. Verify S3 Block Public Access, CloudFront origin access, encryption, RDS network isolation and API permissions.
+5. Audit logging for secrets and sensitive transaction data, and test failure/notification paths.
+6. Scan repository history and deployment artifacts for accidentally committed secrets.
+7. Recheck cost controls before reactivating paid resources.
+
+---
+
+## Original capstone security plan
+
+The following section is retained as the project's original design checklist. Statements such as "must", "will" and unchecked validation items are **requirements or planned verification**, not proof of current deployment state.
+
 
 ## 1. Purpose
 
